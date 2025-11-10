@@ -1,0 +1,28 @@
+# OS generated files #
+######################
+.DS_Store*
+ehthumbs.db
+Icon?
+Thumbs.db
+*~
+._*
+
+# IDE stuff #
+#############
+# IDEA
+.idea
+*.ipr
+*.iml
+*.iws
+
+# VS Code
+.vscode/
+.factorypath
+
+
+# Local environment #
+#####################
+.env
+
+# https://taskfile.dev/
+.task/
