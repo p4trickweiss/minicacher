@@ -3,6 +3,7 @@
 version: "3"
 
 tasks:
-  default:
+  build:
+    desc: Build the Docker image
     cmds:
-      - echo taskfile example
+      - docker build -f build/Dockerfile -t distributed-cache:latest .
