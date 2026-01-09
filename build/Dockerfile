@@ -17,9 +17,18 @@ ARG TARGETOS TARGETARCH
 RUN GOOS="$TARGETOS" GOARCH="$TARGETARCH" CGO_ENABLED=0 go build -a -o distributed-cache main.go
 
 
-# Use distroless as minimal base image to package the manager binary
-# Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM gcr.io/distroless/static:nonroot
-WORKDIR /
-COPY --from=builder /workspace/distributed-cache .
-ENTRYPOINT ["/distributed-cache"]
+FROM alpine:3.20
+# Create non-root user
+RUN addgroup -S app && adduser -S app -G app
+
+# Writable data directory for Raft
+RUN mkdir -p /data && chown -R app:app /data
+
+WORKDIR /data
+
+# Copy binary
+COPY --from=builder /workspace/distributed-cache /usr/bin/distributed-cache
+
+USER app
+
+ENTRYPOINT ["/usr/bin/distributed-cache"]
