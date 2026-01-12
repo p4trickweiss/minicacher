@@ -1,0 +1,56 @@
+services:
+  node1:
+    image: ghcr.io/p4trickweiss/distributed-cache:latest
+    container_name: raft-node1
+    command:
+      - -haddr=0.0.0.0:11000
+      - -raddr=node1:12000
+      - -id=node1
+      - /data
+    ports:
+      - "11001:11000"
+    volumes:
+      - node1-data:/data
+    networks:
+      - raft-network
+
+  node2:
+    image: ghcr.io/p4trickweiss/distributed-cache:latest
+    container_name: raft-node2
+    command:
+      - -haddr=0.0.0.0:11000
+      - -raddr=node2:12000
+      - -id=node2
+      - -join=node1:11000
+      - /data
+    ports:
+      - "11002:11000"
+    volumes:
+      - node2-data:/data
+    networks:
+      - raft-network
+
+  node3:
+    image: ghcr.io/p4trickweiss/distributed-cache:latest
+    container_name: raft-node3
+    command:
+      - -haddr=0.0.0.0:11000
+      - -raddr=node3:12000
+      - -id=node3
+      - -join=node1:11000
+      - /data
+    ports:
+      - "11003:11000"
+    volumes:
+      - node3-data:/data
+    networks:
+      - raft-network
+
+networks:
+  raft-network:
+    driver: bridge
+
+volumes:
+  node1-data:
+  node2-data:
+  node3-data:
