@@ -32,8 +32,11 @@ func NewServer(addr string, store Store) *Server {
 }
 
 func (s *Server) setupRoutes() {
-	s.mux.HandleFunc("/join", s.handleJoin)
-	s.mux.HandleFunc("/health", s.handleHealth)
+	s.mux.HandleFunc("POST /join", s.handleJoin)
+	s.mux.HandleFunc("GET /store/{key}", s.handleGet)
+	s.mux.HandleFunc("POST /store", s.handleSet)
+	s.mux.HandleFunc("DELETE /store/{key}", s.handleDelete)
+	s.mux.HandleFunc("GET /health", s.handleHealth)
 }
 
 func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +67,82 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+}
+
+func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
+
+	value, err := s.store.Get(key)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "key not found",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"key":   key,
+		"value": value,
+	})
+}
+
+func (s *Server) handleSet(w http.ResponseWriter, r *http.Request) {
+	m := map[string]string{}
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "invalid request body",
+		})
+		return
+	}
+
+	key, okKey := m["key"]
+	value, okValue := m["value"]
+
+	if !okKey || !okValue {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "key and value are required",
+		})
+		return
+	}
+
+	if err := s.store.Set(key, value); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "failed to set value",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "value set successfully",
+		"key":     key,
+	})
+}
+
+func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
+
+	if err := s.store.Delete(key); err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "key not found",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "value deleted successfully",
+		"key":     key,
+	})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
