@@ -1,3 +1,5 @@
+// Package store provides a distributed key-value store implementation using the Raft consensus algorithm.
+// It ensures strong consistency across multiple nodes by replicating all operations through Raft.
 package store
 
 import (
@@ -13,6 +15,7 @@ import (
 	"github.com/hashicorp/raft"
 )
 
+// Command operation types
 type commandType uint8
 
 const (
@@ -20,6 +23,7 @@ const (
 	OpDelete
 )
 
+// command represents a state machine command that will be replicated via Raft
 type command struct {
 	Op    commandType
 	Key   string
@@ -34,6 +38,7 @@ func (c *command) Decode(b []byte) error {
 	return json.Unmarshal(b, c)
 }
 
+// Config holds the configuration for a Store node
 type Config struct {
 	NodeId    string
 	BindAddr  string
@@ -46,6 +51,7 @@ const (
 	raftTimeout         = 10 * time.Second
 )
 
+// Store is a distributed key-value store backed by Raft consensus
 type Store struct {
 	mu     sync.Mutex
 	kv     map[string]string
@@ -53,6 +59,7 @@ type Store struct {
 	logger *log.Logger
 }
 
+// New creates a new Store instance
 func New() *Store {
 	return &Store{
 		kv:     make(map[string]string),
@@ -60,6 +67,7 @@ func New() *Store {
 	}
 }
 
+// Open initializes and starts the Raft node with the given configuration
 func (s *Store) Open(config Config) error {
 	if config.NodeId == "" {
 		return fmt.Errorf("node ID is required")
@@ -70,6 +78,8 @@ func (s *Store) Open(config Config) error {
 	if config.DataDir == "" {
 		config.DataDir = "./data"
 	}
+
+	s.logger.Printf("opening store with node ID: %s, bind address: %s", config.NodeId, config.BindAddr)
 
 	raftConfig := raft.DefaultConfig()
 	raftConfig.LocalID = raft.ServerID(config.NodeId)
@@ -109,8 +119,11 @@ func (s *Store) Open(config Config) error {
 		return fmt.Errorf("new Raft: %s", err)
 	}
 	s.raft = r
+	s.logger.Printf("raft instance created successfully")
 
+	// Bootstrap cluster if this is the first node
 	if config.Bootstrap {
+		s.logger.Printf("bootstrapping new cluster")
 		configuration := raft.Configuration{
 			Servers: []raft.Server{
 				{
@@ -124,50 +137,75 @@ func (s *Store) Open(config Config) error {
 		if err := future.Error(); err != nil {
 			// It's okay if bootstrap fails because cluster already exists
 			s.logger.Printf("bootstrap cluster: %v (this may be expected if cluster already exists)", err)
+		} else {
+			s.logger.Printf("cluster bootstrapped successfully")
 		}
 	}
 
 	return nil
 }
 
+// Join adds a node to the Raft cluster. This should be called on the leader.
 func (s *Store) Join(nodeId, addr string) error {
+	s.logger.Printf("received join request for node %s at %s", nodeId, addr)
+
 	configFuture := s.raft.GetConfiguration()
 	if err := configFuture.Error(); err != nil {
 		s.logger.Printf("failed to get raft configuration: %v", err)
 		return err
 	}
 
-	for _, srv := range configFuture.Configuration().Servers {
+	// Check if node already exists and handle conflicts
+	if err := s.handleExistingServer(nodeId, addr, configFuture.Configuration().Servers); err != nil {
+		return err
+	}
+
+	// Add the new voter
+	s.logger.Printf("adding node %s at %s to cluster", nodeId, addr)
+	f := s.raft.AddVoter(raft.ServerID(nodeId), raft.ServerAddress(addr), 0, 0)
+	if err := f.Error(); err != nil {
+		s.logger.Printf("failed to add voter %s: %v", nodeId, err)
+		return fmt.Errorf("failed to add voter: %w", err)
+	}
+
+	s.logger.Printf("node %s successfully joined cluster", nodeId)
+	return nil
+}
+
+// handleExistingServer removes any conflicting server configurations before adding a new server
+func (s *Store) handleExistingServer(nodeId, addr string, servers []raft.Server) error {
+	for _, srv := range servers {
+		// Check for ID or address conflicts
 		if srv.ID == raft.ServerID(nodeId) || srv.Address == raft.ServerAddress(addr) {
+			// If both ID and address match, node is already a member
 			if srv.Address == raft.ServerAddress(addr) && srv.ID == raft.ServerID(nodeId) {
 				s.logger.Printf("node %s at %s already member of cluster, ignoring join request", nodeId, addr)
 				return nil
 			}
 
+			// Remove conflicting server configuration
+			s.logger.Printf("removing existing conflicting server %s before adding new one", srv.ID)
 			future := s.raft.RemoveServer(srv.ID, 0, 0)
 			if err := future.Error(); err != nil {
-				return fmt.Errorf("error removing existing node %s at %s: %s", nodeId, addr, err)
+				return fmt.Errorf("failed to remove existing node %s at %s: %w", nodeId, addr, err)
 			}
 		}
 	}
-
-	f := s.raft.AddVoter(raft.ServerID(nodeId), raft.ServerAddress(addr), 0, 0)
-	if f.Error() != nil {
-		return f.Error()
-	}
-
 	return nil
 }
 
+// IsLeader returns true if this node is the current Raft leader
 func (s *Store) IsLeader() bool {
 	return s.raft.State() == raft.Leader
 }
 
-func (s *Store) GetLeaderAddr() string {
+// GetLeaderAPIAddr returns the API address of the current cluster leader
+func (s *Store) GetLeaderAPIAddr() string {
 	addr, _ := s.raft.LeaderWithID()
 	return raftToAPIAddr(string(addr))
 }
 
+// raftToAPIAddr converts a Raft address to the corresponding API address
 func raftToAPIAddr(raftAddr string) string {
 	host, _, err := net.SplitHostPort(raftAddr)
 	if err != nil {
@@ -178,15 +216,18 @@ func raftToAPIAddr(raftAddr string) string {
 	return fmt.Sprintf("%s:%d", host, httpPort)
 }
 
+// Get retrieves a value from the key-value store
 func (s *Store) Get(key string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.kv[key], nil
 }
 
+// Set stores a key-value pair. Must be called on the leader.
 func (s *Store) Set(key, value string) error {
 	if s.raft.State() != raft.Leader {
-		return fmt.Errorf("Not leader")
+		s.logger.Printf("set rejected: not leader (key=%s)", key)
+		return fmt.Errorf("not leader")
 	}
 
 	cmd := &command{
@@ -204,9 +245,11 @@ func (s *Store) Set(key, value string) error {
 	return future.Error()
 }
 
+// Delete removes a key from the store. Must be called on the leader.
 func (s *Store) Delete(key string) error {
 	if s.raft.State() != raft.Leader {
-		return fmt.Errorf("Not leader")
+		s.logger.Printf("delete rejected: not leader (key=%s)", key)
+		return fmt.Errorf("not leader")
 	}
 
 	cmd := &command{
@@ -223,6 +266,7 @@ func (s *Store) Delete(key string) error {
 	return future.Error()
 }
 
+// applySet is called by the FSM to apply a Set command to the key-value store
 func (s *Store) applySet(key, value string) any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -230,6 +274,7 @@ func (s *Store) applySet(key, value string) any {
 	return nil
 }
 
+// applyDelete is called by the FSM to apply a Delete command to the key-value store
 func (s *Store) applyDelete(key string) any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
