@@ -13,12 +13,31 @@ tasks:
     cmds:
       - docker build -f build/Dockerfile -t ghcr.io/p4trickweiss/distributed-cache:latest .
 
-  docker-compose:
+  docker-compose:up:
     desc: Run the docker-compose file
     cmds:
-      - docker compose -f deployments/docker-compose.yml up
+      - docker compose -f deployments/docker-compose.yml up -d
+
+  docker-compose:down:
+    desc: Stop the docker-compose file
+    cmds:
+      - docker compose -f deployments/docker-compose.yml down
 
   proto:generate:
     desc: Generate gRPC code from proto files
     cmds:
       - protoc -I=proto --go_out=internal/grpc --go_opt=paths=source_relative --go-grpc_out=internal/grpc --go-grpc_opt=paths=source_relative grpcserver.proto
+
+  test:unit:
+    desc: Run unit tests
+    cmds:
+      - go test ./...
+
+  test:integration:
+    deps:
+      - docker-compose:up
+    desc: Run integration tests
+    dir: test/
+    cmds:
+      - bun test
+      - task docker-compose:down
