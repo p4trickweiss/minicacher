@@ -1,8 +1,11 @@
 package webserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -12,7 +15,9 @@ type Store interface {
 	Get(key string) (string, error)
 	Set(key, value string) error
 	Delete(key string) error
-	Join(nodeID string, addr string) error
+	Join(nodeID, addr string) error
+	IsLeader() bool
+	GetLeaderAddr() string
 }
 
 type Server struct {
@@ -37,6 +42,50 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("POST /store", s.handleSet)
 	s.mux.HandleFunc("DELETE /store/{key}", s.handleDelete)
 	s.mux.HandleFunc("GET /health", s.handleHealth)
+}
+
+func (s *Server) proxyToLeader(w http.ResponseWriter, r *http.Request) bool {
+	if s.store.IsLeader() {
+		return false
+	}
+
+	leaderAddr := s.store.GetLeaderAddr()
+	if leaderAddr == "" {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "leader not available",
+		})
+		return true
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return true
+	}
+
+	leaderURL := fmt.Sprintf("http://%s%s", leaderAddr, r.URL.Path)
+	req, err := http.NewRequest(r.Method, leaderURL, bytes.NewReader(body))
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return true
+	}
+
+	req.Header = r.Header
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "failed to contact leader",
+		})
+		return true
+	}
+	defer resp.Body.Close()
+
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
+	return true
 }
 
 func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +139,10 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSet(w http.ResponseWriter, r *http.Request) {
+	if s.proxyToLeader(w, r) {
+		return
+	}
+
 	m := map[string]string{}
 	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -127,6 +180,10 @@ func (s *Server) handleSet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
+	if s.proxyToLeader(w, r) {
+		return
+	}
+
 	key := r.PathValue("key")
 
 	if err := s.store.Delete(key); err != nil {

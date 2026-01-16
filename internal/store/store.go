@@ -159,6 +159,25 @@ func (s *Store) Join(nodeId, addr string) error {
 	return nil
 }
 
+func (s *Store) IsLeader() bool {
+	return s.raft.State() == raft.Leader
+}
+
+func (s *Store) GetLeaderAddr() string {
+	addr, _ := s.raft.LeaderWithID()
+	return raftToAPIAddr(string(addr))
+}
+
+func raftToAPIAddr(raftAddr string) string {
+	host, _, err := net.SplitHostPort(raftAddr)
+	if err != nil {
+		return ""
+	}
+
+	httpPort := 11000
+	return fmt.Sprintf("%s:%d", host, httpPort)
+}
+
 func (s *Store) Get(key string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
