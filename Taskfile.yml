@@ -41,3 +41,9 @@ tasks:
     cmds:
       - bun test
       - task docker-compose:down
+
+  test:
+    desc: Run all tests
+    cmds:
+      - task test:unit
+      - task test:integration
