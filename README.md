@@ -7,6 +7,8 @@ A distributed key-value store built using the Raft consensus algorithm. This pro
 - **Distributed Key-Value Store**: Stores key-value pairs across multiple nodes.
 - **Raft Consensus Algorithm**: Ensures strong consistency and fault tolerance.
 - **HTTP API**: Provides an easy-to-use HTTP interface for interacting with the store.
+- **Structured Logging**: Built with Go's `slog` package for easy debugging and monitoring.
+- **Graceful Shutdown**: Proper cleanup of Raft state and connections on shutdown.
 - **Dockerized Deployment**: Includes a `docker-compose.yml` file for easy multi-node setup.
 - **Health Checks**: Built-in health check endpoints for monitoring node status.
 

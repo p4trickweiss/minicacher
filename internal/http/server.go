@@ -276,9 +276,20 @@ func (s *Server) Start() error {
 
 // Shutdown gracefully shuts down the HTTP server
 func (s *Server) Shutdown(ctx context.Context) error {
-	if s.server != nil {
-		return s.server.Shutdown(ctx)
+	if s.server == nil {
+		return nil
 	}
+
+	s.logger.Info("shutting down http server, waiting for active connections to finish")
+
+	err := s.server.Shutdown(ctx)
+	if err != nil {
+		s.logger.Error("http server shutdown error",
+			"error", err)
+		return err
+	}
+
+	s.logger.Info("http server stopped accepting connections")
 	return nil
 }
 

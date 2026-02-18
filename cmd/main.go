@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	webserver "github.com/p4trickweiss/distributed-cache/internal/http"
 	"github.com/p4trickweiss/distributed-cache/internal/store"
@@ -85,9 +87,11 @@ func main() {
 
 	server := webserver.NewServer(httpAddr, s, nodeID)
 	go func() {
-		log.Println("Server is starting...")
-		if err := server.Start(); err != nil {
-			log.Fatal("Server failed to start:", err)
+		slog.Info("server is starting")
+		if err := server.Start(); err != nil && err != http.ErrServerClosed {
+			slog.Error("server failed to start",
+				"error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -101,10 +105,35 @@ func main() {
 		"http_addr", httpAddr,
 		"is_leader", s.IsLeader())
 
+	// Wait for termination signal
 	terminate := make(chan os.Signal, 1)
 	signal.Notify(terminate, os.Interrupt, syscall.SIGTERM)
 	<-terminate
-	slog.Info("distributed-cache exiting")
+
+	slog.Info("shutdown signal received, starting graceful shutdown")
+
+	// Graceful shutdown with timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	// Shutdown HTTP server first (stop accepting new requests)
+	slog.Info("shutting down HTTP server")
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		slog.Error("HTTP server shutdown failed",
+			"error", err)
+	} else {
+		slog.Info("HTTP server shutdown complete")
+	}
+
+	// Close Raft and store
+	slog.Info("shutting down store")
+	if err := s.Close(); err != nil {
+		slog.Error("store shutdown failed",
+			"error", err)
+		os.Exit(1)
+	}
+
+	slog.Info("distributed-cache shutdown complete")
 }
 
 func setupLogging() {

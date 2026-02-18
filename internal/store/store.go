@@ -318,3 +318,23 @@ func (s *Store) applyDelete(key string) any {
 		"key", key)
 	return nil
 }
+
+// Close gracefully shuts down the Raft instance
+func (s *Store) Close() error {
+	if s.raft == nil {
+		return nil
+	}
+
+	s.logger.Info("shutting down raft instance")
+
+	// Shutdown triggers a snapshot and stops the Raft instance
+	future := s.raft.Shutdown()
+	if err := future.Error(); err != nil {
+		s.logger.Error("error during raft shutdown",
+			"error", err)
+		return fmt.Errorf("raft shutdown failed: %w", err)
+	}
+
+	s.logger.Info("raft shutdown complete")
+	return nil
+}
