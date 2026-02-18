@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"maps"
 
 	"github.com/hashicorp/raft"
 )
@@ -41,11 +40,8 @@ func (f *fsm) Apply(log *raft.Log) any {
 // Snapshot creates a point-in-time snapshot of the current state.
 // This is called by Raft to create snapshots for log compaction.
 func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
-	f.store.mu.Lock()
-	defer f.store.mu.Unlock()
-
-	clone := maps.Clone(f.store.kv)
-	return &fsmSnapshot{store: clone}, nil
+	snapshot := f.store.cache.Snapshot()
+	return &fsmSnapshot{store: snapshot}, nil
 }
 
 // Restore restores the state machine from a snapshot.
@@ -58,9 +54,7 @@ func (f *fsm) Restore(rc io.ReadCloser) error {
 		return err
 	}
 
-	f.store.mu.Lock()
-	defer f.store.mu.Unlock()
-	f.store.kv = kv
+	f.store.cache.Restore(kv)
 	return nil
 }
 

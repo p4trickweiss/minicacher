@@ -9,10 +9,10 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/hashicorp/raft"
+	"github.com/p4trickweiss/distributed-cache/internal/cache"
 )
 
 // Command operation types
@@ -53,8 +53,7 @@ const (
 
 // Store is a distributed key-value store backed by Raft consensus
 type Store struct {
-	mu     sync.Mutex
-	kv     map[string]string
+	cache  cache.Cache
 	raft   *raft.Raft
 	logger *log.Logger
 }
@@ -62,7 +61,7 @@ type Store struct {
 // New creates a new Store instance
 func New() *Store {
 	return &Store{
-		kv:     make(map[string]string),
+		cache:  cache.New(cache.Options{}),
 		logger: log.New(os.Stderr, "[store]", log.LstdFlags),
 	}
 }
@@ -218,9 +217,7 @@ func raftToAPIAddr(raftAddr string) string {
 
 // Get retrieves a value from the key-value store
 func (s *Store) Get(key string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.kv[key], nil
+	return s.cache.Get(key), nil
 }
 
 // Set stores a key-value pair. Must be called on the leader.
@@ -268,16 +265,12 @@ func (s *Store) Delete(key string) error {
 
 // applySet is called by the FSM to apply a Set command to the key-value store
 func (s *Store) applySet(key, value string) any {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.kv[key] = value
+	s.cache.Set(key, value)
 	return nil
 }
 
 // applyDelete is called by the FSM to apply a Delete command to the key-value store
 func (s *Store) applyDelete(key string) any {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.kv, key)
+	s.cache.Delete(key)
 	return nil
 }
