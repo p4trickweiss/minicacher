@@ -49,8 +49,3 @@ This project uses [Taskfile](https://taskfile.dev) for task automation. Install 
   ```bash
   task docker-compose
   ```
-
-- **Generate gRPC code**:
-  ```bash
-  task proto:generate
-  ```
