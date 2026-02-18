@@ -5,7 +5,7 @@ package store
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -55,14 +55,15 @@ const (
 type Store struct {
 	cache  cache.Cache
 	raft   *raft.Raft
-	logger *log.Logger
+	logger *slog.Logger
+	nodeID string
 }
 
 // New creates a new Store instance
 func New() *Store {
 	return &Store{
 		cache:  cache.New(cache.Options{}),
-		logger: log.New(os.Stderr, "[store]", log.LstdFlags),
+		logger: slog.With("component", "store"),
 	}
 }
 
@@ -78,7 +79,13 @@ func (s *Store) Open(config Config) error {
 		config.DataDir = "./data"
 	}
 
-	s.logger.Printf("opening store with node ID: %s, bind address: %s", config.NodeId, config.BindAddr)
+	s.nodeID = config.NodeId
+	s.logger = s.logger.With("node_id", config.NodeId)
+
+	s.logger.Info("opening store",
+		"raft_addr", config.BindAddr,
+		"data_dir", config.DataDir,
+		"bootstrap", config.Bootstrap)
 
 	raftConfig := raft.DefaultConfig()
 	raftConfig.LocalID = raft.ServerID(config.NodeId)
@@ -118,11 +125,11 @@ func (s *Store) Open(config Config) error {
 		return fmt.Errorf("new Raft: %s", err)
 	}
 	s.raft = r
-	s.logger.Printf("raft instance created successfully")
+	s.logger.Info("raft instance created successfully")
 
 	// Bootstrap cluster if this is the first node
 	if config.Bootstrap {
-		s.logger.Printf("bootstrapping new cluster")
+		s.logger.Info("bootstrapping new cluster")
 		configuration := raft.Configuration{
 			Servers: []raft.Server{
 				{
@@ -135,9 +142,10 @@ func (s *Store) Open(config Config) error {
 		future := r.BootstrapCluster(configuration)
 		if err := future.Error(); err != nil {
 			// It's okay if bootstrap fails because cluster already exists
-			s.logger.Printf("bootstrap cluster: %v (this may be expected if cluster already exists)", err)
+			s.logger.Warn("bootstrap cluster failed (may be expected if cluster already exists)",
+				"error", err)
 		} else {
-			s.logger.Printf("cluster bootstrapped successfully")
+			s.logger.Info("cluster bootstrapped successfully")
 		}
 	}
 
@@ -146,11 +154,15 @@ func (s *Store) Open(config Config) error {
 
 // Join adds a node to the Raft cluster. This should be called on the leader.
 func (s *Store) Join(nodeId, addr string) error {
-	s.logger.Printf("received join request for node %s at %s", nodeId, addr)
+	s.logger.Info("received join request",
+		"joining_node_id", nodeId,
+		"joining_node_addr", addr,
+		"current_state", s.raft.State().String())
 
 	configFuture := s.raft.GetConfiguration()
 	if err := configFuture.Error(); err != nil {
-		s.logger.Printf("failed to get raft configuration: %v", err)
+		s.logger.Error("failed to get raft configuration",
+			"error", err)
 		return err
 	}
 
@@ -160,14 +172,19 @@ func (s *Store) Join(nodeId, addr string) error {
 	}
 
 	// Add the new voter
-	s.logger.Printf("adding node %s at %s to cluster", nodeId, addr)
+	s.logger.Info("adding voter to cluster",
+		"joining_node_id", nodeId,
+		"joining_node_addr", addr)
 	f := s.raft.AddVoter(raft.ServerID(nodeId), raft.ServerAddress(addr), 0, 0)
 	if err := f.Error(); err != nil {
-		s.logger.Printf("failed to add voter %s: %v", nodeId, err)
+		s.logger.Error("failed to add voter",
+			"joining_node_id", nodeId,
+			"error", err)
 		return fmt.Errorf("failed to add voter: %w", err)
 	}
 
-	s.logger.Printf("node %s successfully joined cluster", nodeId)
+	s.logger.Info("node successfully joined cluster",
+		"joined_node_id", nodeId)
 	return nil
 }
 
@@ -178,14 +195,23 @@ func (s *Store) handleExistingServer(nodeId, addr string, servers []raft.Server)
 		if srv.ID == raft.ServerID(nodeId) || srv.Address == raft.ServerAddress(addr) {
 			// If both ID and address match, node is already a member
 			if srv.Address == raft.ServerAddress(addr) && srv.ID == raft.ServerID(nodeId) {
-				s.logger.Printf("node %s at %s already member of cluster, ignoring join request", nodeId, addr)
+				s.logger.Info("node already member of cluster, ignoring join request",
+					"node_id", nodeId,
+					"addr", addr)
 				return nil
 			}
 
 			// Remove conflicting server configuration
-			s.logger.Printf("removing existing conflicting server %s before adding new one", srv.ID)
+			s.logger.Warn("removing existing conflicting server before adding new one",
+				"existing_server_id", srv.ID,
+				"existing_server_addr", srv.Address,
+				"new_node_id", nodeId,
+				"new_node_addr", addr)
 			future := s.raft.RemoveServer(srv.ID, 0, 0)
 			if err := future.Error(); err != nil {
+				s.logger.Error("failed to remove existing node",
+					"node_id", nodeId,
+					"error", err)
 				return fmt.Errorf("failed to remove existing node %s at %s: %w", nodeId, addr, err)
 			}
 		}
@@ -222,10 +248,17 @@ func (s *Store) Get(key string) (string, error) {
 
 // Set stores a key-value pair. Must be called on the leader.
 func (s *Store) Set(key, value string) error {
-	if s.raft.State() != raft.Leader {
-		s.logger.Printf("set rejected: not leader (key=%s)", key)
+	state := s.raft.State()
+	if state != raft.Leader {
+		s.logger.Debug("set rejected: not leader",
+			"key", key,
+			"current_state", state.String())
 		return fmt.Errorf("not leader")
 	}
+
+	s.logger.Debug("applying set operation",
+		"key", key,
+		"value_len", len(value))
 
 	cmd := &command{
 		Op:    OpSet,
@@ -244,10 +277,16 @@ func (s *Store) Set(key, value string) error {
 
 // Delete removes a key from the store. Must be called on the leader.
 func (s *Store) Delete(key string) error {
-	if s.raft.State() != raft.Leader {
-		s.logger.Printf("delete rejected: not leader (key=%s)", key)
+	state := s.raft.State()
+	if state != raft.Leader {
+		s.logger.Debug("delete rejected: not leader",
+			"key", key,
+			"current_state", state.String())
 		return fmt.Errorf("not leader")
 	}
+
+	s.logger.Debug("applying delete operation",
+		"key", key)
 
 	cmd := &command{
 		Op:  OpDelete,
@@ -266,11 +305,16 @@ func (s *Store) Delete(key string) error {
 // applySet is called by the FSM to apply a Set command to the key-value store
 func (s *Store) applySet(key, value string) any {
 	s.cache.Set(key, value)
+	s.logger.Debug("applied set to state machine",
+		"key", key,
+		"value_len", len(value))
 	return nil
 }
 
 // applyDelete is called by the FSM to apply a Delete command to the key-value store
 func (s *Store) applyDelete(key string) any {
 	s.cache.Delete(key)
+	s.logger.Debug("applied delete to state machine",
+		"key", key)
 	return nil
 }

@@ -8,9 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -30,16 +29,16 @@ type Server struct {
 	mux    *http.ServeMux
 	server *http.Server
 	store  Store
-	logger *log.Logger
+	logger *slog.Logger
 }
 
 // NewServer creates a new HTTP server instance
-func NewServer(addr string, store Store) *Server {
+func NewServer(addr string, store Store, nodeID string) *Server {
 	return &Server{
 		addr:   addr,
 		mux:    http.NewServeMux(),
 		store:  store,
-		logger: log.New(os.Stderr, "[webserver]", log.LstdFlags),
+		logger: slog.With("component", "http_server", "node_id", nodeID),
 	}
 }
 
@@ -61,16 +60,22 @@ func (s *Server) proxyToLeader(w http.ResponseWriter, r *http.Request) bool {
 
 	leaderAddr := s.store.GetLeaderAPIAddr()
 	if leaderAddr == "" {
-		s.logger.Printf("proxy failed: no leader available for %s %s", r.Method, r.URL.Path)
+		s.logger.Warn("proxy failed: no leader available",
+			"method", r.Method,
+			"path", r.URL.Path)
 		s.writeJSONError(w, http.StatusServiceUnavailable, "leader not available")
 		return true
 	}
 
-	s.logger.Printf("proxying %s %s to leader at %s", r.Method, r.URL.Path, leaderAddr)
+	s.logger.Debug("proxying request to leader",
+		"method", r.Method,
+		"path", r.URL.Path,
+		"leader_addr", leaderAddr)
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		s.logger.Printf("proxy failed: error reading request body: %v", err)
+		s.logger.Error("proxy failed: error reading request body",
+			"error", err)
 		s.writeJSONError(w, http.StatusInternalServerError, "failed to read request body")
 		return true
 	}
@@ -78,7 +83,8 @@ func (s *Server) proxyToLeader(w http.ResponseWriter, r *http.Request) bool {
 	leaderURL := fmt.Sprintf("http://%s%s", leaderAddr, r.URL.Path)
 	req, err := http.NewRequest(r.Method, leaderURL, bytes.NewReader(body))
 	if err != nil {
-		s.logger.Printf("proxy failed: error creating request to leader: %v", err)
+		s.logger.Error("proxy failed: error creating request to leader",
+			"error", err)
 		s.writeJSONError(w, http.StatusInternalServerError, "failed to create proxy request")
 		return true
 	}
@@ -87,16 +93,23 @@ func (s *Server) proxyToLeader(w http.ResponseWriter, r *http.Request) bool {
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		s.logger.Printf("proxy failed: error contacting leader at %s: %v", leaderAddr, err)
+		s.logger.Error("proxy failed: error contacting leader",
+			"leader_addr", leaderAddr,
+			"error", err)
 		s.writeJSONError(w, http.StatusBadGateway, "failed to contact leader")
 		return true
 	}
 	defer resp.Body.Close()
 
-	s.logger.Printf("proxy successful: %s %s -> leader (status: %d)", r.Method, r.URL.Path, resp.StatusCode)
+	s.logger.Info("proxy successful",
+		"method", r.Method,
+		"path", r.URL.Path,
+		"leader_addr", leaderAddr,
+		"status", resp.StatusCode)
 	w.WriteHeader(resp.StatusCode)
 	if _, err := io.Copy(w, resp.Body); err != nil {
-		s.logger.Printf("proxy warning: error copying response body: %v", err)
+		s.logger.Warn("proxy warning: error copying response body",
+			"error", err)
 	}
 	return true
 }
@@ -109,24 +122,32 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.logger.Printf("join failed: invalid JSON: %v", err)
+		s.logger.Warn("join failed: invalid JSON",
+			"error", err)
 		s.writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	if req.ID == "" || req.Addr == "" {
-		s.logger.Printf("join failed: missing required fields (id=%s, addr=%s)", req.ID, req.Addr)
+		s.logger.Warn("join failed: missing required fields",
+			"id", req.ID,
+			"addr", req.Addr)
 		s.writeJSONError(w, http.StatusBadRequest, "id and addr are required")
 		return
 	}
 
 	if err := s.store.Join(req.ID, req.Addr); err != nil {
-		s.logger.Printf("join failed: error adding node %s at %s: %v", req.ID, req.Addr, err)
+		s.logger.Error("join failed",
+			"node_id", req.ID,
+			"addr", req.Addr,
+			"error", err)
 		s.writeJSONError(w, http.StatusInternalServerError, "failed to join cluster")
 		return
 	}
 
-	s.logger.Printf("join successful: node %s at %s", req.ID, req.Addr)
+	s.logger.Info("join successful",
+		"node_id", req.ID,
+		"addr", req.Addr)
 	s.writeJSONResponse(w, http.StatusOK, map[string]string{
 		"message": "node joined successfully",
 		"id":      req.ID,
@@ -139,10 +160,16 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 
 	value, err := s.store.Get(key)
 	if err != nil {
-		s.logger.Printf("GET failed: key=%s, error=%v", key, err)
+		s.logger.Error("GET failed",
+			"key", key,
+			"error", err)
 		s.writeJSONError(w, http.StatusInternalServerError, "failed to get value")
 		return
 	}
+
+	s.logger.Debug("GET successful",
+		"key", key,
+		"value_len", len(value))
 
 	s.writeJSONResponse(w, http.StatusOK, map[string]string{
 		"key":   key,
@@ -162,23 +189,31 @@ func (s *Server) handleSet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.logger.Printf("SET failed: invalid JSON: %v", err)
+		s.logger.Warn("SET failed: invalid JSON",
+			"error", err)
 		s.writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	if req.Key == "" || req.Value == "" {
-		s.logger.Printf("SET failed: missing required fields (key=%s, value_present=%t)",
-			req.Key, req.Value != "")
+		s.logger.Warn("SET failed: missing required fields",
+			"key", req.Key,
+			"value_present", req.Value != "")
 		s.writeJSONError(w, http.StatusBadRequest, "key and value are required")
 		return
 	}
 
 	if err := s.store.Set(req.Key, req.Value); err != nil {
-		s.logger.Printf("SET failed: key=%s, error=%v", req.Key, err)
+		s.logger.Error("SET failed",
+			"key", req.Key,
+			"error", err)
 		s.writeJSONError(w, http.StatusInternalServerError, "failed to set value")
 		return
 	}
+
+	s.logger.Info("SET successful",
+		"key", req.Key,
+		"value_len", len(req.Value))
 
 	s.writeJSONResponse(w, http.StatusCreated, map[string]string{
 		"message": "value set successfully",
@@ -195,10 +230,15 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
 
 	if err := s.store.Delete(key); err != nil {
-		s.logger.Printf("DELETE failed: key=%s, error=%v", key, err)
+		s.logger.Error("DELETE failed",
+			"key", key,
+			"error", err)
 		s.writeJSONError(w, http.StatusInternalServerError, "failed to delete key")
 		return
 	}
+
+	s.logger.Info("DELETE successful",
+		"key", key)
 
 	s.writeJSONResponse(w, http.StatusOK, map[string]string{
 		"message": "value deleted successfully",
@@ -229,7 +269,8 @@ func (s *Server) Start() error {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	log.Printf("Starting http server on %s", s.addr)
+	s.logger.Info("starting http server",
+		"addr", s.addr)
 	return s.server.ListenAndServe()
 }
 
@@ -246,7 +287,8 @@ func (s *Server) writeJSONResponse(w http.ResponseWriter, statusCode int, data a
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(data); err != nil {
-		s.logger.Printf("error encoding JSON response: %v", err)
+		s.logger.Error("error encoding JSON response",
+			"error", err)
 	}
 }
 

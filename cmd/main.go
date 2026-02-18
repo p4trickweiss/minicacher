@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -25,6 +26,8 @@ var (
 	raftAddr string
 	joinAddr string
 	nodeID   string
+	logLevel string
+	logJSON  bool
 )
 
 func init() {
@@ -32,6 +35,8 @@ func init() {
 	flag.StringVar(&raftAddr, "raddr", DefaultRaftAddr, "Set Raft bind address")
 	flag.StringVar(&joinAddr, "join", "", "Set join address, if any")
 	flag.StringVar(&nodeID, "id", "", "Node ID. If not set, same as Raft bind address")
+	flag.StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
+	flag.BoolVar(&logJSON, "log-json", false, "Output logs in JSON format")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <raft-data-path>\n", os.Args[0])
 		flag.PrintDefaults()
@@ -41,6 +46,9 @@ func init() {
 func main() {
 	flag.Parse()
 
+	// Setup structured logging
+	setupLogging()
+
 	if flag.NArg() == 0 {
 		fmt.Fprintf(os.Stderr, "No Raft storage directory specified\n")
 		os.Exit(1)
@@ -49,6 +57,12 @@ func main() {
 	if nodeID == "" {
 		nodeID = raftAddr
 	}
+
+	slog.Info("starting distributed-cache",
+		"node_id", nodeID,
+		"http_addr", httpAddr,
+		"raft_addr", raftAddr,
+		"join_addr", joinAddr)
 
 	raftDir := flag.Arg(0)
 	if raftDir == "" {
@@ -69,7 +83,7 @@ func main() {
 		log.Fatalf("failed to open store: %s", err.Error())
 	}
 
-	server := webserver.NewServer(httpAddr, s)
+	server := webserver.NewServer(httpAddr, s, nodeID)
 	go func() {
 		log.Println("Server is starting...")
 		if err := server.Start(); err != nil {
@@ -83,12 +97,44 @@ func main() {
 		}
 	}
 
-	log.Printf("distributed-cache started successfully, listening on http://%s", httpAddr)
+	slog.Info("distributed-cache started successfully",
+		"http_addr", httpAddr,
+		"is_leader", s.IsLeader())
 
 	terminate := make(chan os.Signal, 1)
 	signal.Notify(terminate, os.Interrupt, syscall.SIGTERM)
 	<-terminate
-	log.Println("distributed-cache exiting")
+	slog.Info("distributed-cache exiting")
+}
+
+func setupLogging() {
+	// Parse log level
+	var level slog.Level
+	switch logLevel {
+	case "debug":
+		level = slog.LevelDebug
+	case "info":
+		level = slog.LevelInfo
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+
+	// Create handler based on format
+	var handler slog.Handler
+	opts := &slog.HandlerOptions{Level: level}
+
+	if logJSON {
+		handler = slog.NewJSONHandler(os.Stdout, opts)
+	} else {
+		handler = slog.NewTextHandler(os.Stdout, opts)
+	}
+
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
 }
 
 func join(joinAddr, raftAddr, nodeID string) error {
