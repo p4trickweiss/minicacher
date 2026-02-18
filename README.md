@@ -21,7 +21,6 @@ For more detailed information, please refer to the [documentation](docs).
 - [Go](https://golang.org/) (version 1.22+ recommended)
 - [Docker](https://www.docker.com/)
 - [Docker Compose](https://docs.docker.com/compose/)
-- [Protocol Buffers Compiler](https://grpc.io/docs/protoc-installation/) (for gRPC code generation)
 - [Task](https://taskfile.dev) (for task automation)
 
 ### Clone the Repository
