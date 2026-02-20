@@ -1,0 +1,16 @@
+node:
+  id: "node2"
+  data_dir: "./data/node2"
+
+http:
+  bind_addr: "localhost:11001"
+
+raft:
+  bind_addr: "localhost:12001"
+
+cluster:
+  join_addr: "localhost:11000"
+
+logging:
+  level: "info"
+  json: false

@@ -1,0 +1,28 @@
+# Distributed Cache Configuration Example
+
+node:
+  # Unique identifier for this node
+  # If not set, defaults to the Raft bind address
+  id: "node1"
+
+  # Directory for Raft data storage
+  data_dir: "./data"
+
+http:
+  # HTTP API bind address
+  bind_addr: "localhost:11000"
+
+raft:
+  # Raft consensus bind address
+  bind_addr: "localhost:12000"
+
+cluster:
+  # Address of existing node to join (empty for bootstrap node)
+  join_addr: ""
+
+logging:
+  # Log level: debug, info, warn, error
+  level: "info"
+
+  # Output logs in JSON format
+  json: false

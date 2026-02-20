@@ -1,0 +1,16 @@
+node:
+  id: "node1"
+  data_dir: "./data/node1"
+
+http:
+  bind_addr: "localhost:11000"
+
+raft:
+  bind_addr: "localhost:12000"
+
+cluster:
+  join_addr: "" # Empty for bootstrap node
+
+logging:
+  level: "info"
+  json: false

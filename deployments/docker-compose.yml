@@ -2,27 +2,19 @@ services:
   node1:
     image: ghcr.io/p4trickweiss/distributed-cache:latest
     container_name: raft-node1
-    command:
-      - -haddr=0.0.0.0:11000
-      - -raddr=node1:12000
-      - -id=node1
-      - /data
-    ports:
-      - "11001:11000"
     volumes:
       - node1-data:/data
+    environment:
+      - DCACHE_NODE_ID=node1
+      - DCACHE_NODE_DATA_DIR=/data
+      - DCACHE_HTTP_BIND_ADDR=0.0.0.0:11000
+      - DCACHE_RAFT_BIND_ADDR=node1:12000
+    ports:
+      - "11001:11000"
     networks:
       - raft-network
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://localhost:11000/health",
-        ]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:11000/health"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -31,16 +23,16 @@ services:
   node2:
     image: ghcr.io/p4trickweiss/distributed-cache:latest
     container_name: raft-node2
-    command:
-      - -haddr=0.0.0.0:11000
-      - -raddr=node2:12000
-      - -id=node2
-      - -join=node1:11000
-      - /data
-    ports:
-      - "11002:11000"
     volumes:
       - node2-data:/data
+    environment:
+      - DCACHE_NODE_ID=node2
+      - DCACHE_NODE_DATA_DIR=/data
+      - DCACHE_HTTP_BIND_ADDR=0.0.0.0:11000
+      - DCACHE_RAFT_BIND_ADDR=node2:12000
+      - DCACHE_CLUSTER_JOIN_ADDR=node1:11000
+    ports:
+      - "11002:11000"
     networks:
       - raft-network
     depends_on:
@@ -50,16 +42,16 @@ services:
   node3:
     image: ghcr.io/p4trickweiss/distributed-cache:latest
     container_name: raft-node3
-    command:
-      - -haddr=0.0.0.0:11000
-      - -raddr=node3:12000
-      - -id=node3
-      - -join=node1:11000
-      - /data
-    ports:
-      - "11003:11000"
     volumes:
       - node3-data:/data
+    environment:
+      - DCACHE_NODE_ID=node3
+      - DCACHE_NODE_DATA_DIR=/data
+      - DCACHE_HTTP_BIND_ADDR=0.0.0.0:11000
+      - DCACHE_RAFT_BIND_ADDR=node3:12000
+      - DCACHE_CLUSTER_JOIN_ADDR=node1:11000
+    ports:
+      - "11003:11000"
     networks:
       - raft-network
     depends_on:

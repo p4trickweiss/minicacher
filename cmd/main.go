@@ -14,33 +14,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/p4trickweiss/distributed-cache/internal/config"
 	webserver "github.com/p4trickweiss/distributed-cache/internal/http"
 	"github.com/p4trickweiss/distributed-cache/internal/node"
 )
 
-const (
-	DefaultHTTPAddr = "localhost:11000"
-	DefaultRaftAddr = "localhost:12000"
-)
-
-var (
-	httpAddr string
-	raftAddr string
-	joinAddr string
-	nodeID   string
-	logLevel string
-	logJSON  bool
-)
+var configPath string
 
 func init() {
-	flag.StringVar(&httpAddr, "haddr", DefaultHTTPAddr, "Set the HTTP bind address")
-	flag.StringVar(&raftAddr, "raddr", DefaultRaftAddr, "Set Raft bind address")
-	flag.StringVar(&joinAddr, "join", "", "Set join address, if any")
-	flag.StringVar(&nodeID, "id", "", "Node ID. If not set, same as Raft bind address")
-	flag.StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
-	flag.BoolVar(&logJSON, "log-json", false, "Output logs in JSON format")
+	flag.StringVar(&configPath, "config", "", "Path to config file (optional, uses defaults if not specified)")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [options] <raft-data-path>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 }
@@ -48,61 +32,63 @@ func init() {
 func main() {
 	flag.Parse()
 
-	// Setup structured logging
-	setupLogging()
-
-	if flag.NArg() == 0 {
-		fmt.Fprintf(os.Stderr, "No Raft storage directory specified\n")
-		os.Exit(1)
+	// Load configuration
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
 	}
 
+	// Setup structured logging
+	setupLogging(cfg.Logging)
+
+	// Set node ID default if not specified
+	nodeID := cfg.Node.ID
 	if nodeID == "" {
-		nodeID = raftAddr
+		nodeID = cfg.Raft.BindAddr
 	}
 
 	slog.Info("starting distributed-cache",
 		"node_id", nodeID,
-		"http_addr", httpAddr,
-		"raft_addr", raftAddr,
-		"join_addr", joinAddr)
+		"http_addr", cfg.HTTP.BindAddr,
+		"raft_addr", cfg.Raft.BindAddr,
+		"join_addr", cfg.Cluster.JoinAddr)
 
-	raftDir := flag.Arg(0)
-	if raftDir == "" {
-		log.Fatalln("No Raft storage directory specified")
-	}
-	if err := os.MkdirAll(raftDir, 0o700); err != nil {
-		log.Fatalf("failed to create path for Raft storage: %s", err.Error())
+	// Create data directory
+	if err := os.MkdirAll(cfg.Node.DataDir, 0o700); err != nil {
+		log.Fatalf("failed to create data directory: %v", err)
 	}
 
+	// Initialize node
 	n := node.New()
-	config := node.Config{
+	nodeConfig := node.Config{
 		NodeId:    nodeID,
-		BindAddr:  raftAddr,
-		DataDir:   raftDir,
-		Bootstrap: joinAddr == "",
+		BindAddr:  cfg.Raft.BindAddr,
+		DataDir:   cfg.Node.DataDir,
+		Bootstrap: cfg.IsBootstrap(),
 	}
-	if err := n.Open(config); err != nil {
-		log.Fatalf("failed to open node: %s", err.Error())
+	if err := n.Open(nodeConfig); err != nil {
+		log.Fatalf("failed to open node: %v", err)
 	}
 
-	server := webserver.NewServer(httpAddr, n, nodeID)
+	// Start HTTP server
+	server := webserver.NewServer(cfg.HTTP.BindAddr, n, nodeID)
 	go func() {
 		slog.Info("server is starting")
 		if err := server.Start(); err != nil && err != http.ErrServerClosed {
-			slog.Error("server failed to start",
-				"error", err)
+			slog.Error("server failed to start", "error", err)
 			os.Exit(1)
 		}
 	}()
 
-	if joinAddr != "" {
-		if err := join(joinAddr, raftAddr, nodeID); err != nil {
-			log.Fatalf("failed to join node at %s: %s", joinAddr, err.Error())
+	// Join cluster if needed
+	if cfg.Cluster.JoinAddr != "" {
+		if err := join(cfg.Cluster.JoinAddr, cfg.Raft.BindAddr, nodeID); err != nil {
+			log.Fatalf("failed to join cluster: %v", err)
 		}
 	}
 
 	slog.Info("distributed-cache started successfully",
-		"http_addr", httpAddr,
+		"http_addr", cfg.HTTP.BindAddr,
 		"is_leader", n.IsLeader())
 
 	// Wait for termination signal
@@ -136,10 +122,9 @@ func main() {
 	slog.Info("distributed-cache shutdown complete")
 }
 
-func setupLogging() {
-	// Parse log level
+func setupLogging(cfg config.LoggingConfig) {
 	var level slog.Level
-	switch logLevel {
+	switch cfg.Level {
 	case "debug":
 		level = slog.LevelDebug
 	case "info":
@@ -152,11 +137,10 @@ func setupLogging() {
 		level = slog.LevelInfo
 	}
 
-	// Create handler based on format
 	var handler slog.Handler
 	opts := &slog.HandlerOptions{Level: level}
 
-	if logJSON {
+	if cfg.JSON {
 		handler = slog.NewJSONHandler(os.Stdout, opts)
 	} else {
 		handler = slog.NewTextHandler(os.Stdout, opts)

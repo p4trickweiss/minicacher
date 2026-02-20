@@ -31,4 +31,6 @@ COPY --from=builder /workspace/distributed-cache /usr/bin/distributed-cache
 
 USER app
 
+WORKDIR /data
+
 ENTRYPOINT ["/usr/bin/distributed-cache"]
