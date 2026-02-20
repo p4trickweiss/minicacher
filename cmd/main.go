@@ -15,7 +15,7 @@ import (
 	"time"
 
 	webserver "github.com/p4trickweiss/distributed-cache/internal/http"
-	"github.com/p4trickweiss/distributed-cache/internal/store"
+	"github.com/p4trickweiss/distributed-cache/internal/node"
 )
 
 const (
@@ -74,18 +74,18 @@ func main() {
 		log.Fatalf("failed to create path for Raft storage: %s", err.Error())
 	}
 
-	s := store.New()
-	config := store.Config{
+	n := node.New()
+	config := node.Config{
 		NodeId:    nodeID,
 		BindAddr:  raftAddr,
 		DataDir:   raftDir,
 		Bootstrap: joinAddr == "",
 	}
-	if err := s.Open(config); err != nil {
-		log.Fatalf("failed to open store: %s", err.Error())
+	if err := n.Open(config); err != nil {
+		log.Fatalf("failed to open node: %s", err.Error())
 	}
 
-	server := webserver.NewServer(httpAddr, s, nodeID)
+	server := webserver.NewServer(httpAddr, n, nodeID)
 	go func() {
 		slog.Info("server is starting")
 		if err := server.Start(); err != nil && err != http.ErrServerClosed {
@@ -103,7 +103,7 @@ func main() {
 
 	slog.Info("distributed-cache started successfully",
 		"http_addr", httpAddr,
-		"is_leader", s.IsLeader())
+		"is_leader", n.IsLeader())
 
 	// Wait for termination signal
 	terminate := make(chan os.Signal, 1)
@@ -125,10 +125,10 @@ func main() {
 		slog.Info("HTTP server shutdown complete")
 	}
 
-	// Close Raft and store
-	slog.Info("shutting down store")
-	if err := s.Close(); err != nil {
-		slog.Error("store shutdown failed",
+	// Close Raft and node
+	slog.Info("shutting down node")
+	if err := n.Close(); err != nil {
+		slog.Error("node shutdown failed",
 			"error", err)
 		os.Exit(1)
 	}

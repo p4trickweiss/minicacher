@@ -13,8 +13,8 @@ import (
 	"time"
 )
 
-// Store defines the interface for interacting with the distributed key-value store
-type Store interface {
+// Node defines the interface for interacting with the distributed key-value store node
+type Node interface {
 	Get(key string) (string, error)
 	Set(key, value string) error
 	Delete(key string) error
@@ -28,16 +28,16 @@ type Server struct {
 	addr   string
 	mux    *http.ServeMux
 	server *http.Server
-	store  Store
+	node   Node
 	logger *slog.Logger
 }
 
 // NewServer creates a new HTTP server instance
-func NewServer(addr string, store Store, nodeID string) *Server {
+func NewServer(addr string, node Node, nodeID string) *Server {
 	return &Server{
 		addr:   addr,
 		mux:    http.NewServeMux(),
-		store:  store,
+		node:   node,
 		logger: slog.With("component", "http_server", "node_id", nodeID),
 	}
 }
@@ -54,11 +54,11 @@ func (s *Server) setupRoutes() {
 // proxyToLeader forwards write requests to the Raft leader if this node is not the leader.
 // Returns true if the request was proxied, false if this node is the leader.
 func (s *Server) proxyToLeader(w http.ResponseWriter, r *http.Request) bool {
-	if s.store.IsLeader() {
+	if s.node.IsLeader() {
 		return false
 	}
 
-	leaderAddr := s.store.GetLeaderAPIAddr()
+	leaderAddr := s.node.GetLeaderAPIAddr()
 	if leaderAddr == "" {
 		s.logger.Warn("proxy failed: no leader available",
 			"method", r.Method,
@@ -136,7 +136,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.Join(req.ID, req.Addr); err != nil {
+	if err := s.node.Join(req.ID, req.Addr); err != nil {
 		s.logger.Error("join failed",
 			"node_id", req.ID,
 			"addr", req.Addr,
@@ -158,7 +158,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
 
-	value, err := s.store.Get(key)
+	value, err := s.node.Get(key)
 	if err != nil {
 		s.logger.Error("GET failed",
 			"key", key,
@@ -203,7 +203,7 @@ func (s *Server) handleSet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.Set(req.Key, req.Value); err != nil {
+	if err := s.node.Set(req.Key, req.Value); err != nil {
 		s.logger.Error("SET failed",
 			"key", req.Key,
 			"error", err)
@@ -229,7 +229,7 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 
 	key := r.PathValue("key")
 
-	if err := s.store.Delete(key); err != nil {
+	if err := s.node.Delete(key); err != nil {
 		s.logger.Error("DELETE failed",
 			"key", key,
 			"error", err)
@@ -248,7 +248,7 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 
 // handleHealth returns the health status of the server
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	isLeader := s.store.IsLeader()
+	isLeader := s.node.IsLeader()
 
 	s.writeJSONResponse(w, http.StatusOK, map[string]any{
 		"status":    "healthy",

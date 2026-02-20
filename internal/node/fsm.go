@@ -1,4 +1,4 @@
-package store
+package node
 
 import (
 	"encoding/json"
@@ -11,12 +11,12 @@ import (
 // fsm implements the raft.FSM interface, providing the finite state machine
 // that applies committed log entries to the key-value store.
 type fsm struct {
-	store *Store
+	node *Node
 }
 
-// newFSM creates a new finite state machine backed by the given Store
-func newFSM(s *Store) *fsm {
-	return &fsm{store: s}
+// newFSM creates a new finite state machine backed by the given Node
+func newFSM(n *Node) *fsm {
+	return &fsm{node: n}
 }
 
 // Apply is called by Raft when a log entry is committed.
@@ -29,9 +29,9 @@ func (f *fsm) Apply(log *raft.Log) any {
 
 	switch cmd.Op {
 	case OpSet:
-		return f.store.applySet(cmd.Key, cmd.Value)
+		return f.node.applySet(cmd.Key, cmd.Value)
 	case OpDelete:
-		return f.store.applyDelete(cmd.Key)
+		return f.node.applyDelete(cmd.Key)
 	default:
 		return fmt.Errorf("Unknown op")
 	}
@@ -40,7 +40,7 @@ func (f *fsm) Apply(log *raft.Log) any {
 // Snapshot creates a point-in-time snapshot of the current state.
 // This is called by Raft to create snapshots for log compaction.
 func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
-	snapshot := f.store.cache.Snapshot()
+	snapshot := f.node.cache.Snapshot()
 	return &fsmSnapshot{store: snapshot}, nil
 }
 
@@ -54,7 +54,7 @@ func (f *fsm) Restore(rc io.ReadCloser) error {
 		return err
 	}
 
-	f.store.cache.Restore(kv)
+	f.node.cache.Restore(kv)
 	return nil
 }
 

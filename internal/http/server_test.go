@@ -8,26 +8,26 @@ import (
 	"testing"
 )
 
-// mockStore implements the Store interface for testing
-type mockStore struct {
+// mockNode implements the Node interface for testing
+type mockNode struct {
 	data      map[string]string
 	isLeader  bool
 	leaderAPI string
 	joinError error
 }
 
-func newMockStore() *mockStore {
-	return &mockStore{
+func newMockNode() *mockNode {
+	return &mockNode{
 		data:     make(map[string]string),
 		isLeader: true,
 	}
 }
 
-func (m *mockStore) Get(key string) (string, error) {
+func (m *mockNode) Get(key string) (string, error) {
 	return m.data[key], nil
 }
 
-func (m *mockStore) Set(key, value string) error {
+func (m *mockNode) Set(key, value string) error {
 	if !m.isLeader {
 		return ErrNotLeader
 	}
@@ -35,7 +35,7 @@ func (m *mockStore) Set(key, value string) error {
 	return nil
 }
 
-func (m *mockStore) Delete(key string) error {
+func (m *mockNode) Delete(key string) error {
 	if !m.isLeader {
 		return ErrNotLeader
 	}
@@ -43,25 +43,25 @@ func (m *mockStore) Delete(key string) error {
 	return nil
 }
 
-func (m *mockStore) Join(nodeID, addr string) error {
+func (m *mockNode) Join(nodeID, addr string) error {
 	return m.joinError
 }
 
-func (m *mockStore) IsLeader() bool {
+func (m *mockNode) IsLeader() bool {
 	return m.isLeader
 }
 
-func (m *mockStore) GetLeaderAPIAddr() string {
+func (m *mockNode) GetLeaderAPIAddr() string {
 	return m.leaderAPI
 }
 
 var ErrNotLeader = http.ErrMissingFile // Just need some error for testing
 
 func TestHandleGet_Success(t *testing.T) {
-	store := newMockStore()
-	store.data["testkey"] = "testvalue"
+	node := newMockNode()
+	node.data["testkey"] = "testvalue"
 
-	server := NewServer("localhost:8080", store, "test-node")
+	server := NewServer("localhost:8080", node, "test-node")
 
 	req := httptest.NewRequest("GET", "/store/testkey", nil)
 	req.SetPathValue("key", "testkey")
@@ -87,8 +87,8 @@ func TestHandleGet_Success(t *testing.T) {
 }
 
 func TestHandleGet_NonExistentKey(t *testing.T) {
-	store := newMockStore()
-	server := NewServer("localhost:8080", store, "test-node")
+	node := newMockNode()
+	server := NewServer("localhost:8080", node, "test-node")
 
 	req := httptest.NewRequest("GET", "/store/nonexistent", nil)
 	req.SetPathValue("key", "nonexistent")
@@ -112,8 +112,8 @@ func TestHandleGet_NonExistentKey(t *testing.T) {
 }
 
 func TestHandleSet_Success(t *testing.T) {
-	store := newMockStore()
-	server := NewServer("localhost:8080", store, "test-node")
+	node := newMockNode()
+	server := NewServer("localhost:8080", node, "test-node")
 
 	body := map[string]string{
 		"key":   "newkey",
@@ -132,14 +132,14 @@ func TestHandleSet_Success(t *testing.T) {
 	}
 
 	// Verify data was stored
-	if store.data["newkey"] != "newvalue" {
-		t.Errorf("Expected value 'newvalue', got '%s'", store.data["newkey"])
+	if node.data["newkey"] != "newvalue" {
+		t.Errorf("Expected value 'newvalue', got '%s'", node.data["newkey"])
 	}
 }
 
 func TestHandleSet_MissingFields(t *testing.T) {
-	store := newMockStore()
-	server := NewServer("localhost:8080", store, "test-node")
+	node := newMockNode()
+	server := NewServer("localhost:8080", node, "test-node")
 
 	tests := []struct {
 		name string
@@ -180,8 +180,8 @@ func TestHandleSet_MissingFields(t *testing.T) {
 }
 
 func TestHandleSet_InvalidJSON(t *testing.T) {
-	store := newMockStore()
-	server := NewServer("localhost:8080", store, "test-node")
+	node := newMockNode()
+	server := NewServer("localhost:8080", node, "test-node")
 
 	req := httptest.NewRequest("POST", "/store", bytes.NewReader([]byte("invalid json")))
 	req.Header.Set("Content-Type", "application/json")
@@ -195,9 +195,9 @@ func TestHandleSet_InvalidJSON(t *testing.T) {
 }
 
 func TestHandleDelete_Success(t *testing.T) {
-	store := newMockStore()
-	store.data["deletekey"] = "deletevalue"
-	server := NewServer("localhost:8080", store, "test-node")
+	node := newMockNode()
+	node.data["deletekey"] = "deletevalue"
+	server := NewServer("localhost:8080", node, "test-node")
 
 	req := httptest.NewRequest("DELETE", "/store/deletekey", nil)
 	req.SetPathValue("key", "deletekey")
@@ -210,14 +210,14 @@ func TestHandleDelete_Success(t *testing.T) {
 	}
 
 	// Verify data was deleted
-	if _, exists := store.data["deletekey"]; exists {
+	if _, exists := node.data["deletekey"]; exists {
 		t.Errorf("Key should have been deleted")
 	}
 }
 
 func TestHandleJoin_Success(t *testing.T) {
-	store := newMockStore()
-	server := NewServer("localhost:8080", store, "test-node")
+	node := newMockNode()
+	server := NewServer("localhost:8080", node, "test-node")
 
 	body := map[string]string{
 		"id":   "node2",
@@ -246,8 +246,8 @@ func TestHandleJoin_Success(t *testing.T) {
 }
 
 func TestHandleJoin_MissingFields(t *testing.T) {
-	store := newMockStore()
-	server := NewServer("localhost:8080", store, "test-node")
+	node := newMockNode()
+	server := NewServer("localhost:8080", node, "test-node")
 
 	tests := []struct {
 		name string
@@ -288,8 +288,8 @@ func TestHandleJoin_MissingFields(t *testing.T) {
 }
 
 func TestHandleHealth(t *testing.T) {
-	store := newMockStore()
-	server := NewServer("localhost:8080", store, "test-node")
+	node := newMockNode()
+	server := NewServer("localhost:8080", node, "test-node")
 
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
@@ -315,9 +315,9 @@ func TestHandleHealth(t *testing.T) {
 }
 
 func TestProxyToLeader_WhenLeader(t *testing.T) {
-	store := newMockStore()
-	store.isLeader = true
-	server := NewServer("localhost:8080", store, "test-node")
+	node := newMockNode()
+	node.isLeader = true
+	server := NewServer("localhost:8080", node, "test-node")
 
 	req := httptest.NewRequest("POST", "/store", nil)
 	w := httptest.NewRecorder()
@@ -330,10 +330,10 @@ func TestProxyToLeader_WhenLeader(t *testing.T) {
 }
 
 func TestProxyToLeader_NoLeaderAvailable(t *testing.T) {
-	store := newMockStore()
-	store.isLeader = false
-	store.leaderAPI = "" // No leader available
-	server := NewServer("localhost:8080", store, "test-node")
+	node := newMockNode()
+	node.isLeader = false
+	node.leaderAPI = "" // No leader available
+	server := NewServer("localhost:8080", node, "test-node")
 
 	req := httptest.NewRequest("POST", "/store", nil)
 	w := httptest.NewRecorder()
@@ -351,10 +351,10 @@ func TestProxyToLeader_NoLeaderAvailable(t *testing.T) {
 
 func TestHandleSet_NotLeader_NoProxy(t *testing.T) {
 	// Test the handleSet behavior when not leader and proxy fails
-	store := newMockStore()
-	store.isLeader = false
-	store.leaderAPI = "" // No leader
-	server := NewServer("localhost:8080", store, "test-node")
+	node := newMockNode()
+	node.isLeader = false
+	node.leaderAPI = "" // No leader
+	server := NewServer("localhost:8080", node, "test-node")
 
 	body := map[string]string{
 		"key":   "testkey",
@@ -374,8 +374,8 @@ func TestHandleSet_NotLeader_NoProxy(t *testing.T) {
 }
 
 func TestWriteJSONResponse(t *testing.T) {
-	store := newMockStore()
-	server := NewServer("localhost:8080", store, "test-node")
+	node := newMockNode()
+	server := NewServer("localhost:8080", node, "test-node")
 
 	w := httptest.NewRecorder()
 	data := map[string]string{"message": "test"}
@@ -401,8 +401,8 @@ func TestWriteJSONResponse(t *testing.T) {
 }
 
 func TestWriteJSONError(t *testing.T) {
-	store := newMockStore()
-	server := NewServer("localhost:8080", store, "test-node")
+	node := newMockNode()
+	server := NewServer("localhost:8080", node, "test-node")
 
 	w := httptest.NewRecorder()
 

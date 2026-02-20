@@ -1,21 +1,21 @@
-package store
+package node
 
 import (
 	"testing"
 )
 
 func TestNew(t *testing.T) {
-	s := New()
+	n := New()
 
-	if s == nil {
+	if n == nil {
 		t.Fatal("New() returned nil")
 	}
 
-	if s.cache == nil {
+	if n.cache == nil {
 		t.Error("Cache is nil")
 	}
 
-	if s.logger == nil {
+	if n.logger == nil {
 		t.Error("Logger is nil")
 	}
 }
@@ -64,13 +64,13 @@ func TestRaftToAPIAddr(t *testing.T) {
 }
 
 func TestApplySet(t *testing.T) {
-	s := New()
+	n := New()
 
 	// Apply a set operation
-	s.applySet("key1", "value1")
+	n.applySet("key1", "value1")
 
 	// Verify it was stored in cache
-	val, err := s.Get("key1")
+	val, err := n.Get("key1")
 	if err != nil {
 		t.Fatalf("Get failed: %v", err)
 	}
@@ -81,32 +81,32 @@ func TestApplySet(t *testing.T) {
 }
 
 func TestApplyDelete(t *testing.T) {
-	s := New()
+	n := New()
 
 	// First set a value
-	s.applySet("key1", "value1")
+	n.applySet("key1", "value1")
 
 	// Verify it exists
-	val, _ := s.Get("key1")
+	val, _ := n.Get("key1")
 	if val != "value1" {
 		t.Errorf("Setup failed: expected value1, got %q", val)
 	}
 
 	// Apply delete
-	s.applyDelete("key1")
+	n.applyDelete("key1")
 
 	// Verify it was deleted
-	val, _ = s.Get("key1")
+	val, _ = n.Get("key1")
 	if val != "" {
 		t.Errorf("Get after delete should return empty string, got %q", val)
 	}
 }
 
 func TestGet(t *testing.T) {
-	s := New()
+	n := New()
 
 	// Test getting non-existent key
-	val, err := s.Get("nonexistent")
+	val, err := n.Get("nonexistent")
 	if err != nil {
 		t.Errorf("Get should not error on non-existent key: %v", err)
 	}
@@ -115,8 +115,8 @@ func TestGet(t *testing.T) {
 	}
 
 	// Set and get a value
-	s.applySet("testkey", "testvalue")
-	val, err = s.Get("testkey")
+	n.applySet("testkey", "testvalue")
+	val, err = n.Get("testkey")
 	if err != nil {
 		t.Errorf("Get failed: %v", err)
 	}
@@ -192,17 +192,17 @@ func TestCommandDecodeInvalid(t *testing.T) {
 }
 
 func TestClose_WithoutOpen(t *testing.T) {
-	s := New()
+	n := New()
 
 	// Close without opening should not error
-	err := s.Close()
+	err := n.Close()
 	if err != nil {
 		t.Errorf("Close without Open should not error: %v", err)
 	}
 }
 
 func TestMultipleOperations(t *testing.T) {
-	s := New()
+	n := New()
 
 	// Perform multiple operations
 	operations := []struct {
@@ -216,12 +216,12 @@ func TestMultipleOperations(t *testing.T) {
 
 	// Set all values
 	for _, op := range operations {
-		s.applySet(op.key, op.value)
+		n.applySet(op.key, op.value)
 	}
 
 	// Verify all values
 	for _, op := range operations {
-		val, err := s.Get(op.key)
+		val, err := n.Get(op.key)
 		if err != nil {
 			t.Errorf("Get(%q) failed: %v", op.key, err)
 		}
@@ -231,38 +231,38 @@ func TestMultipleOperations(t *testing.T) {
 	}
 
 	// Delete one value
-	s.applyDelete("key2")
+	n.applyDelete("key2")
 
 	// Verify deletion
-	val, _ := s.Get("key2")
+	val, _ := n.Get("key2")
 	if val != "" {
 		t.Errorf("Get(key2) after delete = %q, want empty string", val)
 	}
 
 	// Verify others still exist
-	val, _ = s.Get("key1")
+	val, _ = n.Get("key1")
 	if val != "value1" {
 		t.Errorf("Get(key1) = %q, want value1", val)
 	}
-	val, _ = s.Get("key3")
+	val, _ = n.Get("key3")
 	if val != "value3" {
 		t.Errorf("Get(key3) = %q, want value3", val)
 	}
 }
 
 func TestUpdateValue(t *testing.T) {
-	s := New()
+	n := New()
 
 	// Set initial value
-	s.applySet("key1", "initial")
-	val, _ := s.Get("key1")
+	n.applySet("key1", "initial")
+	val, _ := n.Get("key1")
 	if val != "initial" {
 		t.Errorf("Initial value = %q, want initial", val)
 	}
 
 	// Update value
-	s.applySet("key1", "updated")
-	val, _ = s.Get("key1")
+	n.applySet("key1", "updated")
+	val, _ = n.Get("key1")
 	if val != "updated" {
 		t.Errorf("Updated value = %q, want updated", val)
 	}
