@@ -1,6 +1,9 @@
 # Distributed Cache
 
-A distributed key-value store built using the Raft consensus algorithm. This project provides a highly available and fault-tolerant caching solution with strong consistency across multiple nodes.
+
+A distributed key-value store built using the Raft consensus algorithm. This is an academic project created to explore distributed systems concepts such as consensus, replication, and fault tolerance. It provides a highly available and fault-tolerant caching solution with strong consistency across multiple nodes.
+
+> **Note:** This project was built for educational purposes. It is not intended for production use.
 
 ## Features
 
