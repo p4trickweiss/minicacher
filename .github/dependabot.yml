@@ -42,10 +42,10 @@ updates:
           - "*"
 
   # =====================
-  # Docker Compose
+  # Docker
   # =====================
   - package-ecosystem: "docker"
-    directory: "/deployments"
+    directory: "/build"
     schedule:
       interval: "weekly"
     commit-message:
@@ -55,17 +55,6 @@ updates:
       docker-images:
         patterns:
           - "*"
-
-  # =====================
-  # Dockerfiles
-  # =====================
-  - package-ecosystem: "docker"
-    directory: "/build"
-    schedule:
-      interval: "weekly"
-    commit-message:
-      prefix: "docker"
-      include: "scope"
 
   # =====================
   # GitHub Actions
