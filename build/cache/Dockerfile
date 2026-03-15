@@ -1,16 +1,16 @@
 FROM --platform=$BUILDPLATFORM golang:1.26.1 AS builder
 WORKDIR /workspace
 
-# Copy the Go Modules manifests from parent directory
-COPY ../go.mod go.mod
-COPY ../go.sum go.sum
+# Copy the Go Modules manifests
+COPY go.mod go.mod
+COPY go.sum go.sum
 
 # Cache deps before building and copying source
 RUN go mod download
 
-# Copy the go source from parent directory
-COPY ../cmd/main.go main.go
-COPY ../internal/ internal/
+# Copy the go source
+COPY cmd/cache/main.go main.go
+COPY internal/ internal/
 
 # Build
 ARG TARGETOS TARGETARCH

@@ -4,14 +4,25 @@ version: "3"
 
 tasks:
   run:
-    desc: Run the application
+    desc: Run the cache application
     cmds:
-      - go run cmd/main.go
+      - go run cmd/cache/main.go
+
+  build:cache:
+    desc: Build the cache Docker image
+    cmds:
+      - docker build -f build/cache/Dockerfile -t ghcr.io/p4trickweiss/distributed-cache:latest .
+
+  build:operator:
+    desc: Build the operator Docker image
+    cmds:
+      - docker build -f build/operator/Dockerfile -t ghcr.io/p4trickweiss/distributed-cache-operator:latest .
 
   build:
-    desc: Build the Docker image
+    desc: Build all Docker images
     cmds:
-      - docker build -f build/Dockerfile -t ghcr.io/p4trickweiss/distributed-cache:latest .
+      - task: build:cache
+      - task: build:operator
 
   docker-compose:up:
     desc: Run the docker-compose file
