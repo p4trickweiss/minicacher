@@ -1,7 +1,6 @@
 # Distributed Cache with Raft Consensus
 
 ## Group Members
-- Marwan Abdalla
 - Patrick Weiss
 
 ## 1. Project Overview
