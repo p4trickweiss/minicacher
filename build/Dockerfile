@@ -17,7 +17,7 @@ ARG TARGETOS TARGETARCH
 RUN GOOS="$TARGETOS" GOARCH="$TARGETARCH" CGO_ENABLED=0 go build -a -o distributed-cache main.go
 
 
-FROM alpine:3.20
+FROM alpine:3.23
 # Create non-root user
 RUN addgroup -S app && adduser -S app -G app
 
