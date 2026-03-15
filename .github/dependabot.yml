@@ -44,8 +44,8 @@ updates:
   # =====================
   # Docker Compose
   # =====================
-  - package-ecosystem: "docker-compose"
-    directory: "/"
+  - package-ecosystem: "docker"
+    directory: "/deployments"
     schedule:
       interval: "weekly"
     commit-message:
@@ -60,7 +60,7 @@ updates:
   # Dockerfiles
   # =====================
   - package-ecosystem: "docker"
-    directory: "/"
+    directory: "/build"
     schedule:
       interval: "weekly"
     commit-message:
