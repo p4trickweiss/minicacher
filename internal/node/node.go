@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
+	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 	"github.com/p4trickweiss/distributed-cache/internal/cache"
 )
 
@@ -108,10 +109,15 @@ func (n *Node) Open(config Config) error {
 		return fmt.Errorf("file snaphot store: %s", err)
 	}
 
-	var logStore raft.LogStore
-	var stableStore raft.StableStore
-	logStore = raft.NewInmemStore()
-	stableStore = raft.NewInmemStore()
+	logStore, err := raftboltdb.NewBoltStore(filepath.Join(config.DataDir, "raft-log.db"))
+	if err != nil {
+		return fmt.Errorf("new bolt store: %w", err)
+	}
+
+	stableStore, err := raftboltdb.NewBoltStore(filepath.Join(config.DataDir, "raft-stable.db"))
+	if err != nil {
+		return fmt.Errorf("new stable store: %w", err)
+	}
 
 	r, err := raft.NewRaft(
 		raftConfig,
