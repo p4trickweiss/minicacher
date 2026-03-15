@@ -86,7 +86,8 @@ describe("Fault Tolerance", () => {
       const healthy = await isNodeHealthy(node.url);
       if (healthy) {
         const data = await getKey(node.url, key);
-        expect(data.value).toBe(value);
+        expect(data).not.toBeNull();
+        expect(data!.value).toBe(value);
       }
     }
   });
@@ -113,7 +114,8 @@ describe("Fault Tolerance", () => {
     for (const node of NODES) {
       if (await isNodeHealthy(node.url)) {
         const data = await getKey(node.url, key);
-        expect(data.value).toBe(value);
+        expect(data).not.toBeNull();
+        expect(data!.value).toBe(value);
       }
     }
   });
@@ -194,8 +196,9 @@ describe("Performance Characteristics", () => {
 
     for (const node of NODES) {
       const start = Date.now();
-      await getKey(node.url, key);
+      const data = await getKey(node.url, key);
       const latency = Date.now() - start;
+      expect(data).not.toBeNull(); // Key should exist
       readLatencies.push({ node: node.id, latency });
     }
 
@@ -230,7 +233,7 @@ describe("Data Volume", () => {
       const data = await getKey(leader!.url, key);
       // Key might not exist due to uniqueKey randomness, but if it does,
       // it should have correct value pattern
-      if (data.value !== "") {
+      if (data !== null) {
         expect(data.value).toContain("data-");
       }
     }
@@ -259,7 +262,8 @@ describe("Data Volume", () => {
     // Verify all sizes replicated correctly
     for (const { key, value } of testCases) {
       const data = await getKey(leader!.url, key);
-      expect(data.value).toBe(value);
+      expect(data).not.toBeNull();
+      expect(data!.value).toBe(value);
       console.log(`Value size ${value.length} bytes: OK`);
     }
   });

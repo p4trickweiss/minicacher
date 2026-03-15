@@ -249,7 +249,16 @@ func raftToAPIAddr(raftAddr string) string {
 
 // Get retrieves a value from the key-value store
 func (n *Node) Get(key string) (string, error) {
-	return n.cache.Get(key), nil
+	value, exists := n.cache.Get(key)
+	if !exists {
+		return "", fmt.Errorf("key not found")
+	}
+	return value, nil
+}
+
+// Exists checks if a key exists in the store
+func (n *Node) Exists(key string) bool {
+	return n.cache.Exists(key)
 }
 
 // Set stores a key-value pair. Must be called on the leader.

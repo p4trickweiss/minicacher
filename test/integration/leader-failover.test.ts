@@ -66,7 +66,8 @@ describe("Leader Election and Failover", () => {
     // Read from all nodes
     for (const node of NODES) {
       const data = await getKey(node.url, key);
-      expect(data.value).toBe(value);
+      expect(data).not.toBeNull();
+      expect(data!.value).toBe(value);
     }
   });
 
@@ -101,7 +102,8 @@ describe("Leader Election and Failover", () => {
 
     // Verify old data is still accessible
     const data = await getKey(newLeader!.url, key);
-    expect(data.value).toBe(value);
+    expect(data).not.toBeNull();
+    expect(data!.value).toBe(value);
 
     // Write new data to new leader
     const newKey = uniqueKey("post-failover");
@@ -113,7 +115,8 @@ describe("Leader Election and Failover", () => {
     const followers = await findFollowers();
     for (const follower of followers) {
       const followerData = await getKey(follower.url, newKey);
-      expect(followerData.value).toBe(newValue);
+      expect(followerData).not.toBeNull();
+      expect(followerData!.value).toBe(newValue);
     }
 
     // TODO: Restart the old leader

@@ -10,25 +10,36 @@ func TestInMemoryCache_BasicOperations(t *testing.T) {
 
 	// Test Set and Get
 	c.Set("key1", "value1")
-	if got := c.Get("key1"); got != "value1" {
-		t.Errorf("Get(key1) = %q, want %q", got, "value1")
+	if got, exists := c.Get("key1"); !exists || got != "value1" {
+		t.Errorf("Get(key1) = (%q, %v), want (%q, true)", got, exists, "value1")
 	}
 
 	// Test Get non-existent key
-	if got := c.Get("nonexistent"); got != "" {
-		t.Errorf("Get(nonexistent) = %q, want empty string", got)
+	if got, exists := c.Get("nonexistent"); exists {
+		t.Errorf("Get(nonexistent) = (%q, %v), want (empty, false)", got, exists)
+	}
+
+	// Test Exists
+	if !c.Exists("key1") {
+		t.Error("Exists(key1) = false, want true")
+	}
+	if c.Exists("nonexistent") {
+		t.Error("Exists(nonexistent) = true, want false")
 	}
 
 	// Test Update
 	c.Set("key1", "value2")
-	if got := c.Get("key1"); got != "value2" {
-		t.Errorf("Get(key1) after update = %q, want %q", got, "value2")
+	if got, exists := c.Get("key1"); !exists || got != "value2" {
+		t.Errorf("Get(key1) after update = (%q, %v), want (%q, true)", got, exists, "value2")
 	}
 
 	// Test Delete
 	c.Delete("key1")
-	if got := c.Get("key1"); got != "" {
-		t.Errorf("Get(key1) after delete = %q, want empty string", got)
+	if got, exists := c.Get("key1"); exists {
+		t.Errorf("Get(key1) after delete = (%q, %v), want (empty, false)", got, exists)
+	}
+	if c.Exists("key1") {
+		t.Error("Exists(key1) after delete = true, want false")
 	}
 
 	// Test Delete non-existent key (should not panic)
@@ -94,19 +105,19 @@ func TestInMemoryCache_Restore(t *testing.T) {
 	c.Restore(newData)
 
 	// Verify old keys are gone
-	if got := c.Get("key1"); got != "" {
-		t.Errorf("Get(key1) after restore = %q, want empty string", got)
+	if _, exists := c.Get("key1"); exists {
+		t.Error("Get(key1) after restore should not exist")
 	}
-	if got := c.Get("key2"); got != "" {
-		t.Errorf("Get(key2) after restore = %q, want empty string", got)
+	if _, exists := c.Get("key2"); exists {
+		t.Error("Get(key2) after restore should not exist")
 	}
 
 	// Verify new keys exist
-	if got := c.Get("key3"); got != "value3" {
-		t.Errorf("Get(key3) after restore = %q, want %q", got, "value3")
+	if got, exists := c.Get("key3"); !exists || got != "value3" {
+		t.Errorf("Get(key3) after restore = (%q, %v), want (%q, true)", got, exists, "value3")
 	}
-	if got := c.Get("key4"); got != "value4" {
-		t.Errorf("Get(key4) after restore = %q, want %q", got, "value4")
+	if got, exists := c.Get("key4"); !exists || got != "value4" {
+		t.Errorf("Get(key4) after restore = (%q, %v), want (%q, true)", got, exists, "value4")
 	}
 }
 
@@ -155,8 +166,8 @@ func TestInMemoryCache_ConcurrentWrites(t *testing.T) {
 	// Verify cache is in valid state
 	for i := 0; i < 26; i++ {
 		key := string(rune('a' + i))
-		if got := c.Get(key); got != "value" {
-			t.Errorf("Get(%q) = %q, want %q", key, got, "value")
+		if got, exists := c.Get(key); !exists || got != "value" {
+			t.Errorf("Get(%q) = (%q, %v), want (%q, true)", key, got, exists, "value")
 		}
 	}
 }

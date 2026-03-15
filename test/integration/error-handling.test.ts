@@ -83,16 +83,16 @@ describe("Error Handling", () => {
     expect(res.status).toBe(404);
   });
 
-  test("should return empty value for non-existent key (not error)", async () => {
+  test("should return 404 for non-existent key", async () => {
     await waitForAllNodesHealthy();
 
     const key = uniqueKey("does-not-exist");
     const res = await fetch(`${NODES[0]!.url}/store/${key}`);
 
-    expect(res.ok).toBe(true);
+    expect(res.status).toBe(404);
 
     const data = await res.json();
-    expect(data.value).toBe("");
+    expect(data.error).toContain("not found");
   });
 
   test("should handle DELETE of non-existent key gracefully", async () => {
@@ -198,7 +198,8 @@ describe("Concurrency Edge Cases", () => {
 
     // Should converge to one of the values (last write wins in Raft)
     const data = await getKey(leader!.url, key);
-    expect(data.value).toMatch(/^value-\d$/);
+    expect(data).not.toBeNull();
+    expect(data!.value).toMatch(/^value-\d$/);
   });
 
   test("should handle concurrent writes and deletes", async () => {
@@ -221,13 +222,14 @@ describe("Concurrency Edge Cases", () => {
       NODES.map((node) => getKey(node.url, key))
     );
 
-    const firstValue = values[0]!.value;
+    const firstValue = values[0] === null ? null : values[0].value;
     for (const data of values) {
-      expect(data.value).toBe(firstValue);
+      const value = data === null ? null : data.value;
+      expect(value).toBe(firstValue);
     }
 
-    // Value is either empty (delete won) or one of the writes
-    expect(["", "value1", "value2"]).toContain(firstValue);
+    // Value is either null (delete won) or one of the writes
+    expect([null, "value1", "value2"]).toContain(firstValue);
   });
 });
 

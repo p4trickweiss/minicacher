@@ -26,7 +26,8 @@ describe("Basic Operations", () => {
 
     // Retrieve the value
     const data = await getKey(node.url, key);
-    expect(data.value).toBe(value);
+    expect(data).not.toBeNull();
+    expect(data!.value).toBe(value);
   });
 
   test("should replicate data across all nodes", async () => {
@@ -58,7 +59,8 @@ describe("Basic Operations", () => {
 
     // Verify it exists on node2
     let data = await getKey(NODES[1]!.url, key);
-    expect(data.value).toBe(value);
+    expect(data).not.toBeNull();
+    expect(data!.value).toBe(value);
 
     // Delete from node3
     const deleteRes = await deleteKey(NODES[2]!.url, key);
@@ -111,9 +113,14 @@ describe("Basic Operations", () => {
       NODES.map((node) => getKey(node.url, key))
     );
 
+    // All should exist and have same value
+    for (const result of values) {
+      expect(result).not.toBeNull();
+    }
+
     const firstValue = values[0]!.value;
     for (const result of values) {
-      expect(result.value).toBe(firstValue);
+      expect(result!.value).toBe(firstValue);
     }
 
     // Value should be one of the written values
@@ -155,13 +162,13 @@ describe("Basic Operations", () => {
     expect(storeRes.status).toBe(400);
   });
 
-  test("should retrieve non-existent key as empty string", async () => {
+  test("should return 404 for non-existent key", async () => {
     await waitForAllNodesHealthy();
 
     const key = uniqueKey("nonexistent");
 
-    // Get non-existent key
+    // Get non-existent key should return null (404)
     const data = await getKey(NODES[0]!.url, key);
-    expect(data.value).toBe("");
+    expect(data).toBeNull();
   });
 });

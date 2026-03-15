@@ -159,7 +159,8 @@ describe("Data Consistency", () => {
     );
 
     for (const data of values) {
-      expect(data.value).toBe("value2");
+      expect(data).not.toBeNull();
+      expect(data!.value).toBe("value2");
     }
   });
 
@@ -183,9 +184,13 @@ describe("Data Consistency", () => {
       NODES.map((node) => getKey(node.url, key))
     );
 
+    for (const data of values) {
+      expect(data).not.toBeNull();
+    }
+
     const firstValue = values[0]!.value;
     for (const data of values) {
-      expect(data.value).toBe(firstValue);
+      expect(data!.value).toBe(firstValue);
     }
 
     // The value should be one of the updates

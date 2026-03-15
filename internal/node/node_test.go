@@ -96,9 +96,12 @@ func TestApplyDelete(t *testing.T) {
 	n.applyDelete("key1")
 
 	// Verify it was deleted
-	val, _ = n.Get("key1")
-	if val != "" {
-		t.Errorf("Get after delete should return empty string, got %q", val)
+	_, err := n.Get("key1")
+	if err == nil {
+		t.Error("Get after delete should return error")
+	}
+	if !n.Exists("key1") == false {
+		t.Error("Exists after delete should return false")
 	}
 }
 
@@ -106,22 +109,27 @@ func TestGet(t *testing.T) {
 	n := New()
 
 	// Test getting non-existent key
-	val, err := n.Get("nonexistent")
-	if err != nil {
-		t.Errorf("Get should not error on non-existent key: %v", err)
-	}
-	if val != "" {
-		t.Errorf("Get(nonexistent) = %q, want empty string", val)
+	_, err := n.Get("nonexistent")
+	if err == nil {
+		t.Error("Get should error on non-existent key")
 	}
 
 	// Set and get a value
 	n.applySet("testkey", "testvalue")
-	val, err = n.Get("testkey")
+	val, err := n.Get("testkey")
 	if err != nil {
 		t.Errorf("Get failed: %v", err)
 	}
 	if val != "testvalue" {
 		t.Errorf("Get(testkey) = %q, want %q", val, "testvalue")
+	}
+
+	// Test exists
+	if !n.Exists("testkey") {
+		t.Error("Exists(testkey) should return true")
+	}
+	if n.Exists("nonexistent") {
+		t.Error("Exists(nonexistent) should return false")
 	}
 }
 
@@ -234,19 +242,19 @@ func TestMultipleOperations(t *testing.T) {
 	n.applyDelete("key2")
 
 	// Verify deletion
-	val, _ := n.Get("key2")
-	if val != "" {
-		t.Errorf("Get(key2) after delete = %q, want empty string", val)
+	_, err := n.Get("key2")
+	if err == nil {
+		t.Error("Get(key2) after delete should return error")
 	}
 
 	// Verify others still exist
-	val, _ = n.Get("key1")
-	if val != "value1" {
-		t.Errorf("Get(key1) = %q, want value1", val)
+	val, err := n.Get("key1")
+	if err != nil || val != "value1" {
+		t.Errorf("Get(key1) = %q (err: %v), want value1", val, err)
 	}
-	val, _ = n.Get("key3")
-	if val != "value3" {
-		t.Errorf("Get(key3) = %q, want value3", val)
+	val, err = n.Get("key3")
+	if err != nil || val != "value3" {
+		t.Errorf("Get(key3) = %q (err: %v), want value3", val, err)
 	}
 }
 
@@ -255,15 +263,15 @@ func TestUpdateValue(t *testing.T) {
 
 	// Set initial value
 	n.applySet("key1", "initial")
-	val, _ := n.Get("key1")
-	if val != "initial" {
-		t.Errorf("Initial value = %q, want initial", val)
+	val, err := n.Get("key1")
+	if err != nil || val != "initial" {
+		t.Errorf("Initial value = %q (err: %v), want initial", val, err)
 	}
 
 	// Update value
 	n.applySet("key1", "updated")
-	val, _ = n.Get("key1")
-	if val != "updated" {
-		t.Errorf("Updated value = %q, want updated", val)
+	val, err = n.Get("key1")
+	if err != nil || val != "updated" {
+		t.Errorf("Updated value = %q (err: %v), want updated", val, err)
 	}
 }

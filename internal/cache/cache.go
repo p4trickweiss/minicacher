@@ -7,9 +7,10 @@ import (
 
 // Cache defines the interface for key-value storage operations
 type Cache interface {
-	Get(key string) string
+	Get(key string) (string, bool)
 	Set(key string, value string)
 	Delete(key string)
+	Exists(key string) bool
 	Snapshot() map[string]string
 	Restore(data map[string]string)
 }
@@ -33,11 +34,12 @@ func New(opts Options) *InMemoryCache {
 	}
 }
 
-// Get retrieves a value by key
-func (c *InMemoryCache) Get(key string) string {
+// Get retrieves a value by key, returns (value, exists)
+func (c *InMemoryCache) Get(key string) (string, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.kv[key]
+	value, exists := c.kv[key]
+	return value, exists
 }
 
 // Set stores a key-value pair
@@ -52,6 +54,14 @@ func (c *InMemoryCache) Delete(key string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.kv, key)
+}
+
+// Exists checks if a key exists in the cache
+func (c *InMemoryCache) Exists(key string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	_, exists := c.kv[key]
+	return exists
 }
 
 // Snapshot creates a point-in-time copy for Raft snapshots

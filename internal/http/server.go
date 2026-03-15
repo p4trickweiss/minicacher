@@ -18,6 +18,7 @@ type Node interface {
 	Get(key string) (string, error)
 	Set(key, value string) error
 	Delete(key string) error
+	Exists(key string) bool
 	Join(nodeID, addr string) error
 	IsLeader() bool
 	GetLeaderAPIAddr() string
@@ -46,6 +47,7 @@ func NewServer(addr string, node Node, nodeID string) *Server {
 func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("POST /join", s.handleJoin)
 	s.mux.HandleFunc("GET /store/{key}", s.handleGet)
+	s.mux.HandleFunc("HEAD /store/{key}", s.handleExists)
 	s.mux.HandleFunc("POST /store", s.handleSet)
 	s.mux.HandleFunc("DELETE /store/{key}", s.handleDelete)
 	s.mux.HandleFunc("GET /health", s.handleHealth)
@@ -160,10 +162,9 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 
 	value, err := s.node.Get(key)
 	if err != nil {
-		s.logger.Error("GET failed",
-			"key", key,
-			"error", err)
-		s.writeJSONError(w, http.StatusInternalServerError, "failed to get value")
+		s.logger.Debug("GET failed: key not found",
+			"key", key)
+		s.writeJSONError(w, http.StatusNotFound, "key not found")
 		return
 	}
 
@@ -175,6 +176,23 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 		"key":   key,
 		"value": value,
 	})
+}
+
+// handleExists checks if a key exists in the store (HEAD request)
+func (s *Server) handleExists(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
+
+	exists := s.node.Exists(key)
+
+	if exists {
+		s.logger.Debug("EXISTS successful: key found",
+			"key", key)
+		w.WriteHeader(http.StatusOK)
+	} else {
+		s.logger.Debug("EXISTS: key not found",
+			"key", key)
+		w.WriteHeader(http.StatusNotFound)
+	}
 }
 
 // handleSet stores a key-value pair in the store

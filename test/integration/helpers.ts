@@ -99,13 +99,30 @@ export async function setKey(
 
 /**
  * Get a value for a key from a specific node
+ * Returns null if key doesn't exist (404)
  */
 export async function getKey(
   nodeUrl: string,
   key: string
-): Promise<StoreResponse> {
+): Promise<StoreResponse | null> {
   const res = await fetch(`${nodeUrl}/store/${key}`);
+  if (res.status === 404) {
+    return null;
+  }
   return res.json() as Promise<StoreResponse>;
+}
+
+/**
+ * Check if a key exists on a specific node
+ */
+export async function keyExists(
+  nodeUrl: string,
+  key: string
+): Promise<boolean> {
+  const res = await fetch(`${nodeUrl}/store/${key}`, {
+    method: "HEAD",
+  });
+  return res.ok;
 }
 
 /**
@@ -122,6 +139,7 @@ export async function deleteKey(
 
 /**
  * Verify a key has the expected value on all nodes
+ * If expectedValue is empty string, verifies the key doesn't exist (404)
  */
 export async function verifyKeyOnAllNodes(
   key: string,
@@ -130,11 +148,29 @@ export async function verifyKeyOnAllNodes(
   for (const node of NODES) {
     try {
       const data = await getKey(node.url, key);
-      if (data.value !== expectedValue) {
-        console.log(
-          `Mismatch on ${node.id}: expected "${expectedValue}", got "${data.value}"`
-        );
-        return false;
+
+      // If we expect empty/deleted, the key should not exist (null)
+      if (expectedValue === "") {
+        if (data !== null) {
+          console.log(
+            `Expected key to not exist on ${node.id}, but got value: "${data.value}"`
+          );
+          return false;
+        }
+      } else {
+        // Key should exist with the expected value
+        if (data === null) {
+          console.log(
+            `Key does not exist on ${node.id}, expected "${expectedValue}"`
+          );
+          return false;
+        }
+        if (data.value !== expectedValue) {
+          console.log(
+            `Mismatch on ${node.id}: expected "${expectedValue}", got "${data.value}"`
+          );
+          return false;
+        }
       }
     } catch (e) {
       console.log(`Failed to get key from ${node.id}:`, e);
@@ -157,7 +193,7 @@ export async function isNodeHealthy(nodeUrl: string): Promise<boolean> {
 }
 
 /**
- * Wait for all nodes to be healthy
+ * Wait for all nodes to be healthy AND for a leader to be elected
  */
 export async function waitForAllNodesHealthy(
   timeoutMs = 15000
@@ -168,7 +204,13 @@ export async function waitForAllNodesHealthy(
       NODES.map((node) => isNodeHealthy(node.url))
     );
     if (healthChecks.every((h) => h)) {
-      return;
+      // All nodes are healthy, now check if leader is elected
+      const leader = await findLeader();
+      if (leader) {
+        // Give a bit more time for cluster to stabilize
+        await sleep(500);
+        return;
+      }
     }
     await sleep(500);
   }

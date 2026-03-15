@@ -3,6 +3,7 @@ package webserver
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -24,7 +25,16 @@ func newMockNode() *mockNode {
 }
 
 func (m *mockNode) Get(key string) (string, error) {
-	return m.data[key], nil
+	value, exists := m.data[key]
+	if !exists {
+		return "", ErrKeyNotFound
+	}
+	return value, nil
+}
+
+func (m *mockNode) Exists(key string) bool {
+	_, exists := m.data[key]
+	return exists
 }
 
 func (m *mockNode) Set(key, value string) error {
@@ -55,7 +65,10 @@ func (m *mockNode) GetLeaderAPIAddr() string {
 	return m.leaderAPI
 }
 
-var ErrNotLeader = http.ErrMissingFile // Just need some error for testing
+var (
+	ErrNotLeader   = errors.New("not leader")
+	ErrKeyNotFound = errors.New("key not found")
+)
 
 func TestHandleGet_Success(t *testing.T) {
 	node := newMockNode()
@@ -96,8 +109,8 @@ func TestHandleGet_NonExistentKey(t *testing.T) {
 
 	server.handleGet(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
 	}
 
 	var resp map[string]string
@@ -105,9 +118,39 @@ func TestHandleGet_NonExistentKey(t *testing.T) {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
 
-	// Non-existent keys return empty string
-	if resp["value"] != "" {
-		t.Errorf("Expected empty value, got '%s'", resp["value"])
+	if resp["error"] != "key not found" {
+		t.Errorf("Expected error 'key not found', got '%s'", resp["error"])
+	}
+}
+
+func TestHandleExists_KeyExists(t *testing.T) {
+	node := newMockNode()
+	node.data["existingkey"] = "somevalue"
+	server := NewServer("localhost:8080", node, "test-node")
+
+	req := httptest.NewRequest("HEAD", "/store/existingkey", nil)
+	req.SetPathValue("key", "existingkey")
+	w := httptest.NewRecorder()
+
+	server.handleExists(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestHandleExists_KeyNotFound(t *testing.T) {
+	node := newMockNode()
+	server := NewServer("localhost:8080", node, "test-node")
+
+	req := httptest.NewRequest("HEAD", "/store/nonexistent", nil)
+	req.SetPathValue("key", "nonexistent")
+	w := httptest.NewRecorder()
+
+	server.handleExists(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
 	}
 }
 
