@@ -29,13 +29,13 @@ tasks:
       - go test ./...
 
   test:integration:
-    deps:
-      - docker-compose:up
     desc: Run integration tests
     dir: test/
     cmds:
+      - task: build
+      - task: docker-compose:up
       - bun test
-      - task docker-compose:down
+      - task: docker-compose:down
 
   test:
     desc: Run all tests

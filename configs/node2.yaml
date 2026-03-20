@@ -1,12 +1,13 @@
 node:
   id: "node2"
+  bind_addr: "localhost"
   data_dir: "./data/node2"
 
 http:
-  bind_addr: "localhost:11001"
+  port: 11001
 
 raft:
-  bind_addr: "localhost:12001"
+  port: 12001
 
 cluster:
   join_addr: "localhost:11000"

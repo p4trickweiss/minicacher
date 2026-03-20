@@ -5,16 +5,19 @@ node:
   # If not set, defaults to the Raft bind address
   id: "node1"
 
+  # Hostname or IP address shared by the HTTP and Raft listeners
+  bind_addr: "localhost"
+
   # Directory for Raft data storage
   data_dir: "./data"
 
 http:
-  # HTTP API bind address
-  bind_addr: "localhost:11000"
+  # HTTP API port
+  port: 11000
 
 raft:
-  # Raft consensus bind address
-  bind_addr: "localhost:12000"
+  # Raft consensus port
+  port: 12000
 
 cluster:
   # Address of existing node to join (empty for bootstrap node)

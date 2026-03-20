@@ -6,15 +6,16 @@ services:
       - node1-data:/data
     environment:
       - DCACHE_NODE_ID=node1
+      - DCACHE_NODE_BIND_ADDR=node1
       - DCACHE_NODE_DATA_DIR=/data
-      - DCACHE_HTTP_BIND_ADDR=0.0.0.0:11000
-      - DCACHE_RAFT_BIND_ADDR=node1:12000
+      - DCACHE_HTTP_PORT=11000
+      - DCACHE_RAFT_PORT=12000
     ports:
       - "11001:11000"
     networks:
       - raft-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:11000/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://node1:11000/health"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -27,9 +28,10 @@ services:
       - node2-data:/data
     environment:
       - DCACHE_NODE_ID=node2
+      - DCACHE_NODE_BIND_ADDR=node2
       - DCACHE_NODE_DATA_DIR=/data
-      - DCACHE_HTTP_BIND_ADDR=0.0.0.0:11000
-      - DCACHE_RAFT_BIND_ADDR=node2:12000
+      - DCACHE_HTTP_PORT=11000
+      - DCACHE_RAFT_PORT=12000
       - DCACHE_CLUSTER_JOIN_ADDR=node1:11000
     ports:
       - "11002:11000"
@@ -46,9 +48,10 @@ services:
       - node3-data:/data
     environment:
       - DCACHE_NODE_ID=node3
+      - DCACHE_NODE_BIND_ADDR=node3
       - DCACHE_NODE_DATA_DIR=/data
-      - DCACHE_HTTP_BIND_ADDR=0.0.0.0:11000
-      - DCACHE_RAFT_BIND_ADDR=node3:12000
+      - DCACHE_HTTP_PORT=11000
+      - DCACHE_RAFT_PORT=12000
       - DCACHE_CLUSTER_JOIN_ADDR=node1:11000
     ports:
       - "11003:11000"

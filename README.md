@@ -88,13 +88,14 @@ Example config file structure:
 ```yaml
 node:
   id: "node1"
+  bind_addr: "localhost"
   data_dir: "./data"
 
 http:
-  bind_addr: "localhost:11000"
+  port: 11000
 
 raft:
-  bind_addr: "localhost:12000"
+  port: 12000
 
 cluster:
   join_addr: ""  # Leave empty for bootstrap node
@@ -111,9 +112,10 @@ All configuration can be overridden with environment variables using the `DCACHE
 | Config Path | Environment Variable | Default |
 |------------|---------------------|---------|
 | `node.id` | `DCACHE_NODE_ID` | (raft bind addr) |
+| `node.bind_addr` | `DCACHE_NODE_BIND_ADDR` | `localhost` |
 | `node.data_dir` | `DCACHE_NODE_DATA_DIR` | `./data` |
-| `http.bind_addr` | `DCACHE_HTTP_BIND_ADDR` | `localhost:11000` |
-| `raft.bind_addr` | `DCACHE_RAFT_BIND_ADDR` | `localhost:12000` |
+| `http.port` | `DCACHE_HTTP_PORT` | `11000` |
+| `raft.port` | `DCACHE_RAFT_PORT` | `12000` |
 | `cluster.join_addr` | `DCACHE_CLUSTER_JOIN_ADDR` | (empty) |
 | `logging.level` | `DCACHE_LOGGING_LEVEL` | `info` |
 | `logging.json` | `DCACHE_LOGGING_JSON` | `false` |

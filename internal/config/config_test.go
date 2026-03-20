@@ -24,11 +24,11 @@ node:
 	}
 
 	// Check defaults
-	if cfg.HTTP.BindAddr != "localhost:11000" {
-		t.Errorf("HTTP.BindAddr = %s, want localhost:11000", cfg.HTTP.BindAddr)
+	if cfg.HTTPAddr() != "localhost:11000" {
+		t.Errorf("HTTPAddr() = %s, want localhost:11000", cfg.HTTPAddr())
 	}
-	if cfg.Raft.BindAddr != "localhost:12000" {
-		t.Errorf("Raft.BindAddr = %s, want localhost:12000", cfg.Raft.BindAddr)
+	if cfg.RaftAddr() != "localhost:12000" {
+		t.Errorf("RaftAddr() = %s, want localhost:12000", cfg.RaftAddr())
 	}
 	if cfg.Logging.Level != "info" {
 		t.Errorf("Logging.Level = %s, want info", cfg.Logging.Level)
@@ -47,13 +47,14 @@ func TestLoad_CustomConfig(t *testing.T) {
 	content := `
 node:
   id: "test-node"
+  bind_addr: "localhost"
   data_dir: "/tmp/test-data"
 
 http:
-  bind_addr: "localhost:8080"
+  port: 8080
 
 raft:
-  bind_addr: "localhost:9090"
+  port: 9090
 
 cluster:
   join_addr: "localhost:7070"
@@ -78,11 +79,11 @@ logging:
 	if cfg.Node.DataDir != "/tmp/test-data" {
 		t.Errorf("Node.DataDir = %s, want /tmp/test-data", cfg.Node.DataDir)
 	}
-	if cfg.HTTP.BindAddr != "localhost:8080" {
-		t.Errorf("HTTP.BindAddr = %s, want localhost:8080", cfg.HTTP.BindAddr)
+	if cfg.HTTPAddr() != "localhost:8080" {
+		t.Errorf("HTTPAddr() = %s, want localhost:8080", cfg.HTTPAddr())
 	}
-	if cfg.Raft.BindAddr != "localhost:9090" {
-		t.Errorf("Raft.BindAddr = %s, want localhost:9090", cfg.Raft.BindAddr)
+	if cfg.RaftAddr() != "localhost:9090" {
+		t.Errorf("RaftAddr() = %s, want localhost:9090", cfg.RaftAddr())
 	}
 	if cfg.Cluster.JoinAddr != "localhost:7070" {
 		t.Errorf("Cluster.JoinAddr = %s, want localhost:7070", cfg.Cluster.JoinAddr)
@@ -101,10 +102,11 @@ func TestLoad_EnvironmentVariables(t *testing.T) {
 	content := `
 node:
   id: "config-node"
+  bind_addr: "localhost"
   data_dir: "./data"
 
 http:
-  bind_addr: "localhost:11000"
+  port: 11000
 
 logging:
   level: "info"
@@ -115,11 +117,11 @@ logging:
 
 	// Set environment variables
 	os.Setenv("DCACHE_NODE_ID", "env-node")
-	os.Setenv("DCACHE_HTTP_BIND_ADDR", "localhost:9999")
+	os.Setenv("DCACHE_HTTP_PORT", "9999")
 	os.Setenv("DCACHE_LOGGING_LEVEL", "debug")
 	defer func() {
 		os.Unsetenv("DCACHE_NODE_ID")
-		os.Unsetenv("DCACHE_HTTP_BIND_ADDR")
+		os.Unsetenv("DCACHE_HTTP_PORT")
 		os.Unsetenv("DCACHE_LOGGING_LEVEL")
 	}()
 
@@ -132,8 +134,8 @@ logging:
 	if cfg.Node.ID != "env-node" {
 		t.Errorf("Node.ID = %s, want env-node", cfg.Node.ID)
 	}
-	if cfg.HTTP.BindAddr != "localhost:9999" {
-		t.Errorf("HTTP.BindAddr = %s, want localhost:9999", cfg.HTTP.BindAddr)
+	if cfg.HTTP.Port != 9999 {
+		t.Errorf("HTTP.Port = %d, want 9999", cfg.HTTP.Port)
 	}
 	if cfg.Logging.Level != "debug" {
 		t.Errorf("Logging.Level = %s, want debug", cfg.Logging.Level)
@@ -150,16 +152,33 @@ func TestLoad_NoConfigFile(t *testing.T) {
 	}
 
 	// Should use defaults
-	if cfg.HTTP.BindAddr != "localhost:11000" {
-		t.Errorf("HTTP.BindAddr = %s, want localhost:11000", cfg.HTTP.BindAddr)
+	if cfg.HTTPAddr() != "localhost:11000" {
+		t.Errorf("HTTPAddr() = %s, want localhost:11000", cfg.HTTPAddr())
+	}
+}
+
+func TestValidate_MissingBindAddr(t *testing.T) {
+	cfg := &Config{
+		Node:    NodeConfig{BindAddr: "", DataDir: "./data"},
+		HTTP:    HTTPConfig{Port: 11000},
+		Raft:    RaftConfig{Port: 12000},
+		Logging: LoggingConfig{Level: "info"},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Validate() should error when bind_addr is empty")
+	}
+	if err.Error() != "node.bind_addr is required" {
+		t.Errorf("Validate() error = %v, want 'node.bind_addr is required'", err)
 	}
 }
 
 func TestValidate_MissingDataDir(t *testing.T) {
 	cfg := &Config{
-		Node:    NodeConfig{DataDir: ""},
-		HTTP:    HTTPConfig{BindAddr: "localhost:11000"},
-		Raft:    RaftConfig{BindAddr: "localhost:12000"},
+		Node:    NodeConfig{BindAddr: "localhost", DataDir: ""},
+		HTTP:    HTTPConfig{Port: 11000},
+		Raft:    RaftConfig{Port: 12000},
 		Logging: LoggingConfig{Level: "info"},
 	}
 
@@ -172,45 +191,45 @@ func TestValidate_MissingDataDir(t *testing.T) {
 	}
 }
 
-func TestValidate_MissingHTTPAddr(t *testing.T) {
+func TestValidate_InvalidHTTPPort(t *testing.T) {
 	cfg := &Config{
-		Node:    NodeConfig{DataDir: "./data"},
-		HTTP:    HTTPConfig{BindAddr: ""},
-		Raft:    RaftConfig{BindAddr: "localhost:12000"},
+		Node:    NodeConfig{BindAddr: "localhost", DataDir: "./data"},
+		HTTP:    HTTPConfig{Port: 0},
+		Raft:    RaftConfig{Port: 12000},
 		Logging: LoggingConfig{Level: "info"},
 	}
 
 	err := cfg.Validate()
 	if err == nil {
-		t.Error("Validate() should error when http bind_addr is empty")
+		t.Error("Validate() should error when http.port is 0")
 	}
-	if err.Error() != "http.bind_addr is required" {
-		t.Errorf("Validate() error = %v, want 'http.bind_addr is required'", err)
+	if err.Error() != "http.port must be a positive integer" {
+		t.Errorf("Validate() error = %v, want 'http.port must be a positive integer'", err)
 	}
 }
 
-func TestValidate_MissingRaftAddr(t *testing.T) {
+func TestValidate_InvalidRaftPort(t *testing.T) {
 	cfg := &Config{
-		Node:    NodeConfig{DataDir: "./data"},
-		HTTP:    HTTPConfig{BindAddr: "localhost:11000"},
-		Raft:    RaftConfig{BindAddr: ""},
+		Node:    NodeConfig{BindAddr: "localhost", DataDir: "./data"},
+		HTTP:    HTTPConfig{Port: 11000},
+		Raft:    RaftConfig{Port: 0},
 		Logging: LoggingConfig{Level: "info"},
 	}
 
 	err := cfg.Validate()
 	if err == nil {
-		t.Error("Validate() should error when raft bind_addr is empty")
+		t.Error("Validate() should error when raft.port is 0")
 	}
-	if err.Error() != "raft.bind_addr is required" {
-		t.Errorf("Validate() error = %v, want 'raft.bind_addr is required'", err)
+	if err.Error() != "raft.port must be a positive integer" {
+		t.Errorf("Validate() error = %v, want 'raft.port must be a positive integer'", err)
 	}
 }
 
 func TestValidate_InvalidLogLevel(t *testing.T) {
 	cfg := &Config{
-		Node:    NodeConfig{DataDir: "./data"},
-		HTTP:    HTTPConfig{BindAddr: "localhost:11000"},
-		Raft:    RaftConfig{BindAddr: "localhost:12000"},
+		Node:    NodeConfig{BindAddr: "localhost", DataDir: "./data"},
+		HTTP:    HTTPConfig{Port: 11000},
+		Raft:    RaftConfig{Port: 12000},
 		Logging: LoggingConfig{Level: "invalid"},
 	}
 
@@ -222,9 +241,9 @@ func TestValidate_InvalidLogLevel(t *testing.T) {
 
 func TestValidate_ValidConfig(t *testing.T) {
 	cfg := &Config{
-		Node:    NodeConfig{ID: "node1", DataDir: "./data"},
-		HTTP:    HTTPConfig{BindAddr: "localhost:11000"},
-		Raft:    RaftConfig{BindAddr: "localhost:12000"},
+		Node:    NodeConfig{ID: "node1", BindAddr: "localhost", DataDir: "./data"},
+		HTTP:    HTTPConfig{Port: 11000},
+		Raft:    RaftConfig{Port: 12000},
 		Cluster: ClusterConfig{JoinAddr: ""},
 		Logging: LoggingConfig{Level: "info", JSON: false},
 	}

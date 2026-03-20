@@ -2,7 +2,9 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -17,16 +19,27 @@ type Config struct {
 }
 
 type NodeConfig struct {
-	ID      string
-	DataDir string `mapstructure:"data_dir"`
+	ID       string
+	BindAddr string `mapstructure:"bind_addr"`
+	DataDir  string `mapstructure:"data_dir"`
 }
 
 type HTTPConfig struct {
-	BindAddr string `mapstructure:"bind_addr"`
+	Port int
 }
 
 type RaftConfig struct {
-	BindAddr string `mapstructure:"bind_addr"`
+	Port int
+}
+
+// HTTPAddr returns the full HTTP bind address (host:port).
+func (c *Config) HTTPAddr() string {
+	return net.JoinHostPort(c.Node.BindAddr, strconv.Itoa(c.HTTP.Port))
+}
+
+// RaftAddr returns the full Raft bind address (host:port).
+func (c *Config) RaftAddr() string {
+	return net.JoinHostPort(c.Node.BindAddr, strconv.Itoa(c.Raft.Port))
 }
 
 type ClusterConfig struct {
@@ -88,28 +101,32 @@ func Load(configPath string) (*Config, error) {
 
 func setDefaults(v *viper.Viper) {
 	v.SetDefault("node.id", "")
+	v.SetDefault("node.bind_addr", "localhost")
 	v.SetDefault("node.data_dir", "./data")
-	v.SetDefault("http.bind_addr", "localhost:11000")
-	v.SetDefault("raft.bind_addr", "localhost:12000")
+	v.SetDefault("http.port", 11000)
+	v.SetDefault("raft.port", 12000)
 	v.SetDefault("cluster.join_addr", "")
 	v.SetDefault("logging.level", "info")
 	v.SetDefault("logging.json", false)
 }
 
 func (c *Config) Validate() error {
+	if c.Node.BindAddr == "" {
+		return fmt.Errorf("node.bind_addr is required")
+	}
+
 	if c.Node.DataDir == "" {
 		return fmt.Errorf("node.data_dir is required")
 	}
 
-	if c.HTTP.BindAddr == "" {
-		return fmt.Errorf("http.bind_addr is required")
+	if c.HTTP.Port <= 0 {
+		return fmt.Errorf("http.port must be a positive integer")
 	}
 
-	if c.Raft.BindAddr == "" {
-		return fmt.Errorf("raft.bind_addr is required")
+	if c.Raft.Port <= 0 {
+		return fmt.Errorf("raft.port must be a positive integer")
 	}
 
-	// Validate log level
 	validLevels := map[string]bool{
 		"debug": true,
 		"info":  true,

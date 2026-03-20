@@ -53,9 +53,10 @@ func TestRaftToAPIAddr(t *testing.T) {
 		},
 	}
 
+	n := &Node{httpPort: "11000"}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := raftToAPIAddr(tt.raftAddr)
+			got := n.raftToAPIAddr(tt.raftAddr)
 			if got != tt.want {
 				t.Errorf("raftToAPIAddr(%q) = %q, want %q", tt.raftAddr, got, tt.want)
 			}

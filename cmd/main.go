@@ -44,13 +44,13 @@ func main() {
 	// Set node ID default if not specified
 	nodeID := cfg.Node.ID
 	if nodeID == "" {
-		nodeID = cfg.Raft.BindAddr
+		nodeID = cfg.RaftAddr()
 	}
 
 	slog.Info("starting distributed-cache",
 		"node_id", nodeID,
-		"http_addr", cfg.HTTP.BindAddr,
-		"raft_addr", cfg.Raft.BindAddr,
+		"http_addr", cfg.HTTPAddr(),
+		"raft_addr", cfg.RaftAddr(),
 		"join_addr", cfg.Cluster.JoinAddr)
 
 	// Create data directory
@@ -62,7 +62,8 @@ func main() {
 	n := node.New()
 	nodeConfig := node.Config{
 		NodeId:    nodeID,
-		BindAddr:  cfg.Raft.BindAddr,
+		BindAddr:  cfg.RaftAddr(),
+		HTTPAddr:  cfg.HTTPAddr(),
 		DataDir:   cfg.Node.DataDir,
 		Bootstrap: cfg.IsBootstrap(),
 	}
@@ -71,7 +72,7 @@ func main() {
 	}
 
 	// Start HTTP server
-	server := webserver.NewServer(cfg.HTTP.BindAddr, n, nodeID)
+	server := webserver.NewServer(cfg.HTTPAddr(), n, nodeID)
 	go func() {
 		slog.Info("server is starting")
 		if err := server.Start(); err != nil && err != http.ErrServerClosed {
@@ -82,13 +83,13 @@ func main() {
 
 	// Join cluster if needed
 	if cfg.Cluster.JoinAddr != "" {
-		if err := join(cfg.Cluster.JoinAddr, cfg.Raft.BindAddr, nodeID); err != nil {
+		if err := join(cfg.Cluster.JoinAddr, cfg.RaftAddr(), nodeID); err != nil {
 			log.Fatalf("failed to join cluster: %v", err)
 		}
 	}
 
 	slog.Info("distributed-cache started successfully",
-		"http_addr", cfg.HTTP.BindAddr,
+		"http_addr", cfg.HTTPAddr(),
 		"is_leader", n.IsLeader())
 
 	// Wait for termination signal

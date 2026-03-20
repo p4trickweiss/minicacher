@@ -41,9 +41,10 @@ func (c *command) Decode(b []byte) error {
 
 // Config holds the configuration for a Node
 type Config struct {
-	NodeId    string
-	BindAddr  string
-	DataDir   string
+	NodeId   string
+	BindAddr string
+	HTTPAddr string
+	DataDir  string
 	Bootstrap bool
 }
 
@@ -54,10 +55,11 @@ const (
 
 // Node is a distributed key-value store backed by Raft consensus
 type Node struct {
-	cache  cache.Cache
-	raft   *raft.Raft
-	logger *slog.Logger
-	nodeID string
+	cache    cache.Cache
+	raft     *raft.Raft
+	logger   *slog.Logger
+	nodeID   string
+	httpPort string
 }
 
 // New creates a new Node instance
@@ -82,6 +84,12 @@ func (n *Node) Open(config Config) error {
 
 	n.nodeID = config.NodeId
 	n.logger = n.logger.With("node_id", config.NodeId)
+
+	_, httpPort, err := net.SplitHostPort(config.HTTPAddr)
+	if err != nil {
+		return fmt.Errorf("invalid http addr %q: %w", config.HTTPAddr, err)
+	}
+	n.httpPort = httpPort
 
 	n.logger.Info("opening node",
 		"raft_addr", config.BindAddr,
@@ -233,18 +241,17 @@ func (n *Node) IsLeader() bool {
 // GetLeaderAPIAddr returns the API address of the current cluster leader
 func (n *Node) GetLeaderAPIAddr() string {
 	addr, _ := n.raft.LeaderWithID()
-	return raftToAPIAddr(string(addr))
+	return n.raftToAPIAddr(string(addr))
 }
 
 // raftToAPIAddr converts a Raft address to the corresponding API address
-func raftToAPIAddr(raftAddr string) string {
+// by replacing the Raft port with the node's configured HTTP port.
+func (n *Node) raftToAPIAddr(raftAddr string) string {
 	host, _, err := net.SplitHostPort(raftAddr)
 	if err != nil {
 		return ""
 	}
-
-	httpPort := 11000
-	return fmt.Sprintf("%s:%d", host, httpPort)
+	return net.JoinHostPort(host, n.httpPort)
 }
 
 // Get retrieves a value from the key-value store
