@@ -14,9 +14,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/p4trickweiss/distributed-cache/internal/config"
-	webserver "github.com/p4trickweiss/distributed-cache/internal/http"
-	"github.com/p4trickweiss/distributed-cache/internal/node"
+	"github.com/p4trickweiss/minicacher/minicacher/internal/config"
+	webserver "github.com/p4trickweiss/minicacher/minicacher/internal/http"
+	"github.com/p4trickweiss/minicacher/minicacher/internal/node"
 )
 
 var configPath string

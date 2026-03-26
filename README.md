@@ -1,4 +1,4 @@
-# Distributed Cache
+# MiniCacheR
 
 
 A distributed key-value store built using the Raft consensus algorithm. This is an academic project created to explore distributed systems concepts such as consensus, replication, and fault tolerance. It provides a highly available and fault-tolerant caching solution with strong consistency across multiple nodes.

@@ -18,8 +18,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
+          go-version-file: minicacher/go.mod
+          cache-dependency-path: minicacher/go.sum
 
       - name: Install Task
         uses: go-task/setup-task@v2

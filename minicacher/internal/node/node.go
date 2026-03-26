@@ -13,7 +13,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
-	"github.com/p4trickweiss/distributed-cache/internal/cache"
+	"github.com/p4trickweiss/minicacher/minicacher/internal/cache"
 )
 
 // Command operation types

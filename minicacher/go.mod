@@ -1,4 +1,4 @@
-module github.com/p4trickweiss/distributed-cache
+module github.com/p4trickweiss/minicacher/minicacher
 
 go 1.25.5
 
