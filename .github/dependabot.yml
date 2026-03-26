@@ -2,10 +2,10 @@ version: 2
 
 updates:
   # =====================
-  # Bun
+  # Bun (MiniCacheR)
   # =====================
   - package-ecosystem: "npm"
-    directory: "/test"
+    directory: "/minicacher/test"
     schedule:
       interval: "weekly"
     commit-message:
@@ -22,10 +22,10 @@ updates:
           - "*"
 
   # =====================
-  # Go Modules
+  # Go Modules (MiniCacheR)
   # =====================
   - package-ecosystem: "gomod"
-    directory: "/"
+    directory: "/minicacher"
     schedule:
       interval: "weekly"
     commit-message:
@@ -42,10 +42,45 @@ updates:
           - "*"
 
   # =====================
-  # Docker
+  # Go Modules (operator)
+  # =====================
+  - package-ecosystem: "gomod"
+    directory: "/operator"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "go"
+      include: "scope"
+    groups:
+      go-security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      go-version-updates:
+        applies-to: version-updates
+        patterns:
+          - "*"
+
+  # =====================
+  # Docker (MiniCacheR)
   # =====================
   - package-ecosystem: "docker"
-    directory: "/build"
+    directory: "/minicacher/build"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docker"
+      include: "scope"
+    groups:
+      docker-images:
+        patterns:
+          - "*"
+
+  # =====================
+  # Docker (operator)
+  # =====================
+  - package-ecosystem: "docker"
+    directory: "/operator"
     schedule:
       interval: "weekly"
     commit-message:
