@@ -28,32 +28,6 @@ For more detailed information, please refer to the [documentation](docs).
 - [Docker Compose](https://docs.docker.com/compose/)
 - [Task](https://taskfile.dev) (for task automation)
 
-### Clone the Repository
-
-```sh
-git clone https://github.com/p4trickweiss/distributed-cache.git
-cd distributed-cache
-```
-
-### Build and Run
-
-This project uses [Taskfile](https://taskfile.dev) for task automation. Install Taskfile and run:
-
-- **Run the application locally**:
-  ```bash
-  task run
-  ```
-
-- **Build the Docker image**:
-  ```bash
-  task build
-  ```
-
-- **Run the application with 3 nodes using Docker Compose**:
-  ```bash
-  task docker-compose
-  ```
-
 ## Configuration
 
 The distributed cache supports configuration via:
@@ -74,10 +48,10 @@ The application can run without any configuration file using sensible defaults:
 
 ### Configuration Files
 
-Example configurations are provided in the `configs/` directory:
-- `configs/node1.yaml` - Bootstrap node example
-- `configs/node2.yaml` - Joining node example
-- `configs/config.example.yaml` - Template file with all options
+Example configurations are provided in the `minicacher/configs/` directory:
+- `minicacher/configs/node1.yaml` - Bootstrap node example
+- `minicacher/configs/node2.yaml` - Joining node example
+- `minicacher/configs/config.example.yaml` - Template file with all options
 
 Use a config file:
 ```bash
