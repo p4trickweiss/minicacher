@@ -1,0 +1,292 @@
+# https://taskfile.dev
+version: "3"
+
+vars:
+  IMG: '{{.IMG | default "controller:latest"}}'
+  CONTAINER_TOOL: '{{.CONTAINER_TOOL | default "docker"}}'
+  LOCALBIN:
+    sh: pwd
+  BIN: "{{.LOCALBIN}}/bin"
+  KIND_CLUSTER: '{{.KIND_CLUSTER | default "operator-test-e2e"}}'
+  PLATFORMS: '{{.PLATFORMS | default "linux/arm64,linux/amd64,linux/s390x,linux/ppc64le"}}'
+  IGNORE_NOT_FOUND: '{{.IGNORE_NOT_FOUND | default "false"}}'
+
+  # Tool binaries
+  KUBECTL: kubectl
+  KIND: kind
+  KUSTOMIZE: "{{.BIN}}/kustomize"
+  CONTROLLER_GEN: "{{.BIN}}/controller-gen"
+  ENVTEST: "{{.BIN}}/setup-envtest"
+  GOLANGCI_LINT: "{{.BIN}}/golangci-lint"
+
+  # Tool versions
+  KUSTOMIZE_VERSION: v5.8.1
+  CONTROLLER_TOOLS_VERSION: v0.20.1
+  GOLANGCI_LINT_VERSION: v2.8.0
+
+  # Dynamically derived from go.mod
+  ENVTEST_VERSION:
+    sh: |
+      v=$(go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' sigs.k8s.io/controller-runtime 2>/dev/null)
+      [ -n "$v" ] || { echo "Set ENVTEST_VERSION manually (controller-runtime replace has no tag)" >&2; exit 1; }
+      echo "$v" | sed -E 's/^v?([0-9]+)\.([0-9]+).*/release-\1.\2/'
+  ENVTEST_K8S_VERSION:
+    sh: |
+      v=$(go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' k8s.io/api 2>/dev/null)
+      [ -n "$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }
+      echo "$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/'
+
+tasks:
+  # ---------------------------------------------------------------------------
+  # Default
+  # ---------------------------------------------------------------------------
+  default:
+    desc: Build the manager binary (default target)
+    cmds:
+      - task: build
+
+  # ---------------------------------------------------------------------------
+  # Development
+  # ---------------------------------------------------------------------------
+  manifests:
+    desc: Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
+    deps: [controller-gen]
+    cmds:
+      - '"{{.CONTROLLER_GEN}}" rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases'
+
+  generate:
+    desc: Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
+    deps: [controller-gen]
+    cmds:
+      - '"{{.CONTROLLER_GEN}}" object:headerFile="hack/boilerplate.go.txt" paths="./..."'
+
+  fmt:
+    desc: Run go fmt against code.
+    cmds:
+      - go fmt ./...
+
+  vet:
+    desc: Run go vet against code.
+    cmds:
+      - go vet ./...
+
+  test:
+    desc: Run unit tests.
+    deps: [manifests, generate, fmt, vet, setup-envtest]
+    cmds:
+      - |
+        KUBEBUILDER_ASSETS="$("{{.ENVTEST}}" use {{.ENVTEST_K8S_VERSION}} --bin-dir "{{.BIN}}" -p path)" \
+        go test $(go list ./... | grep -v /e2e) -coverprofile cover.out
+
+  setup-test-e2e:
+    desc: Set up a Kind cluster for e2e tests if it does not exist.
+    cmds:
+      - |
+        command -v {{.KIND}} >/dev/null 2>&1 || { echo "Kind is not installed. Please install Kind manually."; exit 1; }
+        case "$({{.KIND}} get clusters)" in
+          *"{{.KIND_CLUSTER}}"*)
+            echo "Kind cluster '{{.KIND_CLUSTER}}' already exists. Skipping creation." ;;
+          *)
+            echo "Creating Kind cluster '{{.KIND_CLUSTER}}'..."
+            {{.KIND}} create cluster --name {{.KIND_CLUSTER}} ;;
+        esac
+
+  test-e2e:
+    desc: Run the e2e tests against an isolated Kind cluster.
+    deps: [setup-test-e2e, manifests, generate, fmt, vet]
+    cmds:
+      - KIND={{.KIND}} KIND_CLUSTER={{.KIND_CLUSTER}} go test -tags=e2e ./test/e2e/ -v -ginkgo.v
+      - task: cleanup-test-e2e
+
+  cleanup-test-e2e:
+    desc: Tear down the Kind cluster used for e2e tests.
+    cmds:
+      - "{{.KIND}} delete cluster --name {{.KIND_CLUSTER}}"
+
+  lint:
+    desc: Run golangci-lint linter.
+    deps: [golangci-lint]
+    cmds:
+      - '"{{.GOLANGCI_LINT}}" run'
+
+  lint-fix:
+    desc: Run golangci-lint linter and perform fixes.
+    deps: [golangci-lint]
+    cmds:
+      - '"{{.GOLANGCI_LINT}}" run --fix'
+
+  lint-config:
+    desc: Verify golangci-lint linter configuration.
+    deps: [golangci-lint]
+    cmds:
+      - '"{{.GOLANGCI_LINT}}" config verify'
+
+  # ---------------------------------------------------------------------------
+  # Build
+  # ---------------------------------------------------------------------------
+  build:
+    desc: Build manager binary.
+    deps: [manifests, generate, fmt, vet]
+    cmds:
+      - go build -o bin/manager cmd/main.go
+
+  run:
+    desc: Run a controller from your host.
+    deps: [manifests, generate, fmt, vet]
+    cmds:
+      - go run ./cmd/main.go
+
+  docker-build:
+    desc: Build docker image with the manager.
+    cmds:
+      - "{{.CONTAINER_TOOL}} build -t {{.IMG}} ."
+
+  docker-push:
+    desc: Push docker image with the manager.
+    cmds:
+      - "{{.CONTAINER_TOOL}} push {{.IMG}}"
+
+  docker-buildx:
+    desc: Build and push docker image for the manager for cross-platform support.
+    cmds:
+      - sed -e '1 s/\(^FROM\)/FROM --platform=\$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
+      - "- {{.CONTAINER_TOOL}} buildx create --name operator-builder"
+      - "{{.CONTAINER_TOOL}} buildx use operator-builder"
+      - "- {{.CONTAINER_TOOL}} buildx build --push --platform={{.PLATFORMS}} --tag {{.IMG}} -f Dockerfile.cross ."
+      - "- {{.CONTAINER_TOOL}} buildx rm operator-builder"
+      - rm Dockerfile.cross
+
+  build-installer:
+    desc: Generate a consolidated YAML with CRDs and deployment.
+    deps: [manifests, generate, kustomize]
+    cmds:
+      - mkdir -p dist
+      - cd config/manager && "{{.KUSTOMIZE}}" edit set image controller={{.IMG}}
+      - '"{{.KUSTOMIZE}}" build config/default > dist/install.yaml'
+
+  # ---------------------------------------------------------------------------
+  # Deployment
+  # ---------------------------------------------------------------------------
+  install:
+    desc: Install CRDs into the K8s cluster specified in ~/.kube/config.
+    deps: [manifests, kustomize]
+    cmds:
+      - |
+        out="$( "{{.KUSTOMIZE}}" build config/crd 2>/dev/null || true )"
+        if [ -n "$out" ]; then
+          echo "$out" | "{{.KUBECTL}}" apply -f -
+        else
+          echo "No CRDs to install; skipping."
+        fi
+
+  uninstall:
+    desc: Uninstall CRDs from the K8s cluster specified in ~/.kube/config.
+    deps: [manifests, kustomize]
+    cmds:
+      - |
+        out="$( "{{.KUSTOMIZE}}" build config/crd 2>/dev/null || true )"
+        if [ -n "$out" ]; then
+          echo "$out" | "{{.KUBECTL}}" delete --ignore-not-found={{.IGNORE_NOT_FOUND}} -f -
+        else
+          echo "No CRDs to delete; skipping."
+        fi
+
+  deploy:
+    desc: Deploy controller to the K8s cluster specified in ~/.kube/config.
+    deps: [manifests, kustomize]
+    cmds:
+      - cd config/manager && "{{.KUSTOMIZE}}" edit set image controller={{.IMG}}
+      - '"{{.KUSTOMIZE}}" build config/default | "{{.KUBECTL}}" apply -f -'
+
+  undeploy:
+    desc: Undeploy controller from the K8s cluster specified in ~/.kube/config.
+    deps: [kustomize]
+    cmds:
+      - '"{{.KUSTOMIZE}}" build config/default | "{{.KUBECTL}}" delete --ignore-not-found={{.IGNORE_NOT_FOUND}} -f -'
+
+  # ---------------------------------------------------------------------------
+  # Dependencies
+  # ---------------------------------------------------------------------------
+  _ensure-bin:
+    internal: true
+    cmds:
+      - mkdir -p "{{.BIN}}"
+
+  kustomize:
+    desc: Download kustomize locally if necessary.
+    deps: [_ensure-bin]
+    cmds:
+      - task: _go-install-tool
+        vars:
+          TOOL_PATH: "{{.KUSTOMIZE}}"
+          TOOL_PKG: sigs.k8s.io/kustomize/kustomize/v5
+          TOOL_VERSION: "{{.KUSTOMIZE_VERSION}}"
+
+  controller-gen:
+    desc: Download controller-gen locally if necessary.
+    deps: [_ensure-bin]
+    cmds:
+      - task: _go-install-tool
+        vars:
+          TOOL_PATH: "{{.CONTROLLER_GEN}}"
+          TOOL_PKG: sigs.k8s.io/controller-tools/cmd/controller-gen
+          TOOL_VERSION: "{{.CONTROLLER_TOOLS_VERSION}}"
+
+  envtest:
+    desc: Download setup-envtest locally if necessary.
+    deps: [_ensure-bin]
+    cmds:
+      - task: _go-install-tool
+        vars:
+          TOOL_PATH: "{{.ENVTEST}}"
+          TOOL_PKG: sigs.k8s.io/controller-runtime/tools/setup-envtest
+          TOOL_VERSION: "{{.ENVTEST_VERSION}}"
+
+  setup-envtest:
+    desc: Download the binaries required for ENVTEST in the local bin directory.
+    deps: [envtest]
+    cmds:
+      - echo "Setting up envtest binaries for Kubernetes version {{.ENVTEST_K8S_VERSION}}..."
+      - |
+        "{{.ENVTEST}}" use {{.ENVTEST_K8S_VERSION}} --bin-dir "{{.BIN}}" -p path || {
+          echo "Error: Failed to set up envtest binaries for version {{.ENVTEST_K8S_VERSION}}."
+          exit 1
+        }
+
+  golangci-lint:
+    desc: Download golangci-lint locally if necessary, with optional custom plugin build.
+    deps: [_ensure-bin]
+    cmds:
+      - task: _go-install-tool
+        vars:
+          TOOL_PATH: "{{.GOLANGCI_LINT}}"
+          TOOL_PKG: github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+          TOOL_VERSION: "{{.GOLANGCI_LINT_VERSION}}"
+      - |
+        test -f .custom-gcl.yml && {
+          echo "Building custom golangci-lint with plugins..."
+          "{{.GOLANGCI_LINT}}" custom --destination "{{.BIN}}" --name golangci-lint-custom
+          mv -f "{{.BIN}}/golangci-lint-custom" "{{.GOLANGCI_LINT}}"
+        } || true
+
+  # Internal helper: versioned install + symlink, mirrors the Makefile go-install-tool macro.
+  _go-install-tool:
+    internal: true
+    cmds:
+      - |
+        TOOL_PATH="{{.TOOL_PATH}}"
+        TOOL_PKG="{{.TOOL_PKG}}"
+        TOOL_VERSION="{{.TOOL_VERSION}}"
+        VERSIONED="${TOOL_PATH}-${TOOL_VERSION}"
+
+        # Skip if the symlink already points to the correct versioned binary
+        if [ -f "$VERSIONED" ] && [ "$(readlink -- "$TOOL_PATH" 2>/dev/null)" = "$VERSIONED" ]; then
+          exit 0
+        fi
+
+        set -e
+        echo "Downloading ${TOOL_PKG}@${TOOL_VERSION}"
+        rm -f "$TOOL_PATH"
+        GOBIN="{{.BIN}}" go install "${TOOL_PKG}@${TOOL_VERSION}"
+        mv "{{.BIN}}/$(basename "$TOOL_PATH")" "$VERSIONED"
+        ln -sf "$(realpath "$VERSIONED")" "$TOOL_PATH"
