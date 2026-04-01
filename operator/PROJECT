@@ -8,4 +8,14 @@ layout:
 - go.kubebuilder.io/v4
 projectName: operator
 repo: github.com/p4trickweiss/minicacher/operator
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: p4trickweiss.dev
+  group: cache
+  kind: MiniChacheR
+  path: github.com/p4trickweiss/minicacher/operator/api/v1
+  version: v1
 version: "3"
