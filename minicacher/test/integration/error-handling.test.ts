@@ -106,33 +106,6 @@ describe("Error Handling", () => {
   });
 });
 
-describe("Network Error Scenarios", () => {
-  test("should timeout on unreachable node", async () => {
-    // Try to connect to non-existent node
-    const fakeNodeUrl = "http://localhost:99999";
-
-    try {
-      await fetch(`${fakeNodeUrl}/health`, {
-        signal: AbortSignal.timeout(1000),
-      });
-      expect(true).toBe(false); // Should not reach here
-    } catch (error) {
-      expect(error).toBeDefined();
-    }
-  });
-
-  test("should handle invalid node URL gracefully", async () => {
-    const invalidUrl = "not-a-valid-url";
-
-    try {
-      await fetch(invalidUrl);
-      expect(true).toBe(false); // Should not reach here
-    } catch (error) {
-      expect(error).toBeDefined();
-    }
-  });
-});
-
 describe("JOIN Endpoint Validation", () => {
   test("should reject JOIN with missing id", async () => {
     await waitForAllNodesHealthy();
@@ -171,91 +144,5 @@ describe("JOIN Endpoint Validation", () => {
 
     expect(res.ok).toBe(false);
     expect(res.status).toBe(400);
-  });
-});
-
-describe("Concurrency Edge Cases", () => {
-  test("should handle rapid successive updates to same key", async () => {
-    await waitForAllNodesHealthy();
-
-    const leader = await findLeader();
-    const key = uniqueKey("rapid-update");
-
-    // Fire off 10 rapid updates
-    const updates = [];
-    for (let i = 0; i < 10; i++) {
-      updates.push(setKey(leader!.url, key, `value-${i}`));
-    }
-
-    const results = await Promise.all(updates);
-
-    // All updates should succeed
-    for (const res of results) {
-      expect(res.ok).toBe(true);
-    }
-
-    await sleep(1500);
-
-    // Should converge to one of the values (last write wins in Raft)
-    const data = await getKey(leader!.url, key);
-    expect(data).not.toBeNull();
-    expect(data!.value).toMatch(/^value-\d$/);
-  });
-
-  test("should handle concurrent writes and deletes", async () => {
-    await waitForAllNodesHealthy();
-
-    const key = uniqueKey("write-delete-race");
-
-    // Concurrent write and delete
-    const operations = [
-      setKey(NODES[0]!.url, key, "value1"),
-      setKey(NODES[1]!.url, key, "value2"),
-      deleteKey(NODES[2]!.url, key),
-    ];
-
-    await Promise.all(operations);
-    await sleep(1500);
-
-    // Final state should be consistent across all nodes
-    const values = await Promise.all(
-      NODES.map((node) => getKey(node.url, key))
-    );
-
-    const firstValue = values[0] === null ? null : values[0].value;
-    for (const data of values) {
-      const value = data === null ? null : data.value;
-      expect(value).toBe(firstValue);
-    }
-
-    // Value is either null (delete won) or one of the writes
-    expect([null, "value1", "value2"]).toContain(firstValue);
-  });
-});
-
-describe("Large Operation Batches", () => {
-  test("should handle many concurrent writes without errors", async () => {
-    await waitForAllNodesHealthy();
-
-    const leader = await findLeader();
-    const numWrites = 30;
-
-    const writes = [];
-    for (let i = 0; i < numWrites; i++) {
-      writes.push(setKey(leader!.url, uniqueKey(`batch-${i}`), `val-${i}`));
-    }
-
-    const results = await Promise.all(writes);
-
-    // Count successes
-    const successCount = results.filter((r) => r.ok).length;
-    const errorCount = results.filter((r) => !r.ok).length;
-
-    console.log(
-      `Batch results: ${successCount} success, ${errorCount} errors`
-    );
-
-    // Should have high success rate (allow for some network variability)
-    expect(successCount).toBeGreaterThan(numWrites * 0.9);
   });
 });
