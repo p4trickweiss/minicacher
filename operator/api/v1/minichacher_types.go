@@ -14,9 +14,13 @@ type MiniChacheRSpec struct {
 	// The following markers will use OpenAPI v3 schema to validate the value
 	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
 
-	// foo is an example field of MiniChacheR. Edit minichacher_types.go to remove/update
-	// +optional
-	Foo *string `json:"foo,omitempty"`
+	// Replicas is the desired number of cache nodes in the cluster.
+	// This should typically be an odd number for Raft quorum (e.g., 3, 5).
+	Replicas *int32 `json:"replicas"`
+
+	// Image is the container image used to run each cache node.
+	// The operator will deploy pods using this image.
+	Image string `json:"image"`
 }
 
 // MiniChacheRStatus defines the observed state of MiniChacheR.
@@ -39,7 +43,13 @@ type MiniChacheRStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	// Number of cache pods that have passed readiness checks and are serving traffic.
+	ReadyReplicas int32 `json:"readyReplicas"`
+
+	// Names of all pods currently part of the MiniCacheR cluster.
+	Nodes []string `json:"nodes,omitempty"`
 }
 
 // +kubebuilder:object:root=true
