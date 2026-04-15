@@ -30,12 +30,16 @@ var _ = Describe("MiniChacheR Controller", func() {
 			By("creating the custom resource for the Kind MiniChacheR")
 			err := k8sClient.Get(ctx, typeNamespacedName, minichacher)
 			if err != nil && errors.IsNotFound(err) {
+				replicas := int32(1)
 				resource := &cachev1.MiniChacheR{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: cachev1.MiniChacheRSpec{
+						Replicas: &replicas,
+						Image:    "ghcr.io/p4trickweiss/distributed-cache:latest",
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
