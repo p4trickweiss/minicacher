@@ -300,5 +300,7 @@ tasks:
         echo "Downloading ${TOOL_PKG}@${TOOL_VERSION}"
         rm -f "$TOOL_PATH"
         GOBIN="{{.BIN}}" go install "${TOOL_PKG}@${TOOL_VERSION}"
-        mv "{{.BIN}}/$(basename "$TOOL_PATH")" "$VERSIONED"
+        # go install writes the binary name as the last path element of TOOL_PKG
+        INSTALLED="{{.BIN}}/$(basename "$TOOL_PKG")"
+        mv "$INSTALLED" "$VERSIONED"
         ln -sf "$(realpath "$VERSIONED")" "$TOOL_PATH"
