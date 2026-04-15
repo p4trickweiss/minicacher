@@ -156,6 +156,18 @@ tasks:
       - "- {{.CONTAINER_TOOL}} buildx rm operator-builder"
       - rm Dockerfile.cross
 
+  kind-load:
+    desc: Load the manager image into the Kind cluster.
+    deps: [docker-build]
+    cmds:
+      - "{{.KIND}} load docker-image {{.IMG}} --name {{.KIND_CLUSTER}}"
+
+  dev-deploy:
+    desc: Build, load into Kind, and deploy the controller.
+    cmds:
+      - task: kind-load
+      - task: deploy
+
   build-installer:
     desc: Generate a consolidated YAML with CRDs and deployment.
     deps: [manifests, generate, kustomize]
