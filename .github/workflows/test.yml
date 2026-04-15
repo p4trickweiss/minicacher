@@ -27,4 +27,4 @@ jobs:
           version: 3.x
 
       - name: Run tests
-        run: task test:unit
+        run: task test

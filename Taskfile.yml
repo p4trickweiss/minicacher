@@ -20,7 +20,7 @@ tasks:
   test:
     desc: Run all tests
     cmds:
-      - task: app:test
+      - task: app:test:unit
       - task: operator:test
 
   fmt:

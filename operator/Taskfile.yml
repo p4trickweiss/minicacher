@@ -27,13 +27,13 @@ vars:
   # Dynamically derived from go.mod
   ENVTEST_VERSION:
     sh: |
-      v=$(go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' sigs.k8s.io/controller-runtime 2>/dev/null)
-      [ -n "$v" ] || { echo "Set ENVTEST_VERSION manually (controller-runtime replace has no tag)" >&2; exit 1; }
+      v=$(go list -m sigs.k8s.io/controller-runtime 2>/dev/null | awk '{print $2}')
+      [ -n "$v" ] || { echo "Set ENVTEST_VERSION manually (controller-runtime not found in go.mod)" >&2; exit 1; }
       echo "$v" | sed -E 's/^v?([0-9]+)\.([0-9]+).*/release-\1.\2/'
   ENVTEST_K8S_VERSION:
     sh: |
-      v=$(go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' k8s.io/api 2>/dev/null)
-      [ -n "$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }
+      v=$(go list -m k8s.io/api 2>/dev/null | awk '{print $2}')
+      [ -n "$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api not found in go.mod)" >&2; exit 1; }
       echo "$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/'
 
 tasks:
