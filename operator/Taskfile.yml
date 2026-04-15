@@ -73,23 +73,22 @@ tasks:
   test:
     desc: Run unit tests.
     deps: [manifests, generate, fmt, vet, setup-envtest]
-    cmds:
-      - |
-        KUBEBUILDER_ASSETS="$("{{.ENVTEST}}" use {{.ENVTEST_K8S_VERSION}} --bin-dir "{{.BIN}}" -p path)" \
-        go test $(go list ./... | grep -v /e2e) -coverprofile cover.out
+    env:
+      KUBEBUILDER_ASSETS:
+        sh: '"{{.ENVTEST}}" use {{.ENVTEST_K8S_VERSION}} --bin-dir "{{.BIN}}" -p path'
+    cmds: 
+      - go test $(go list ./... | grep -v /e2e) -coverprofile cover.out
 
   setup-test-e2e:
     desc: Set up a Kind cluster for e2e tests if it does not exist.
+    preconditions:
+      - sh: command -v {{.KIND}}
+        msg: "Kind is not installed. Please install Kind manually."
     cmds:
       - |
-        command -v {{.KIND}} >/dev/null 2>&1 || { echo "Kind is not installed. Please install Kind manually."; exit 1; }
         case "$({{.KIND}} get clusters)" in
           *"{{.KIND_CLUSTER}}"*)
-            echo "Kind cluster '{{.KIND_CLUSTER}}' already exists. Skipping creation." ;;
-          *)
-            echo "Creating Kind cluster '{{.KIND_CLUSTER}}'..."
-            {{.KIND}} create cluster --name {{.KIND_CLUSTER}} ;;
-        esac
+          echo "Kind cluster '{{.KIND_CLUSTER}}' already exists. Skipping creation." ;;
 
   test-e2e:
     desc: Run the e2e tests against an isolated Kind cluster.
@@ -102,6 +101,7 @@ tasks:
     desc: Tear down the Kind cluster used for e2e tests.
     cmds:
       - "{{.KIND}} delete cluster --name {{.KIND_CLUSTER}}"
+      - rm Dockerfile.cross
 
   lint:
     desc: Run golangci-lint linter.
@@ -149,18 +149,18 @@ tasks:
   docker-buildx:
     desc: Build and push docker image for the manager for cross-platform support.
     cmds:
+      - defer: rm -f Dockerfile.cross
       - sed -e '1 s/\(^FROM\)/FROM --platform=\$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
       - "- {{.CONTAINER_TOOL}} buildx create --name operator-builder"
       - "{{.CONTAINER_TOOL}} buildx use operator-builder"
       - "- {{.CONTAINER_TOOL}} buildx build --push --platform={{.PLATFORMS}} --tag {{.IMG}} -f Dockerfile.cross ."
       - "- {{.CONTAINER_TOOL}} buildx rm operator-builder"
-      - rm Dockerfile.cross
 
   kind-load:
     desc: Load the manager image into the Kind cluster.
     deps: [docker-build]
     cmds:
-      - "{{.KIND}} load docker-image {{.IMG}} --name {{.KIND_CLUSTER}}"
+      - "{{.KIND}} load docker-image {{.IMG}}"
 
   dev-deploy:
     desc: Build, load into Kind, and deploy the controller.
