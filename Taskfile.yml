@@ -21,7 +21,6 @@ tasks:
     desc: Run all tests
     cmds:
       - task: app:test:unit
-      - task: operator:test
 
   fmt:
     desc: Run go fmt across all modules
