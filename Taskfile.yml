@@ -6,9 +6,29 @@ includes:
   app:
     taskfile: minicacher/Taskfile.yml
     dir: minicacher
+  operator:
+    taskfile: operator/Taskfile.yml
+    dir: operator
 
 tasks:
-  test:unit:
-    desc: Run unit tests
+  build:
+    desc: Build all components
     cmds:
-      - task: app:test:unit
+      - task: app:build
+      - task: operator:build
+
+  test:
+    desc: Run all tests
+    cmds:
+      - task: app:test
+      - task: operator:test
+
+  fmt:
+    desc: Run go fmt across all modules
+    cmds:
+      - task: operator:fmt
+
+  lint:
+    desc: Lint all components
+    cmds:
+      - task: operator:lint
