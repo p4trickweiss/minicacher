@@ -20,6 +20,8 @@ type Node interface {
 	Delete(key string) error
 	Exists(key string) bool
 	Join(nodeID, addr string) error
+	Leave(nodeID string) error
+	StepDown() error
 	IsLeader() bool
 	GetLeaderAPIAddr() string
 }
@@ -46,6 +48,8 @@ func NewServer(addr string, node Node, nodeID string) *Server {
 // setupRoutes configures all HTTP routes
 func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("POST /join", s.handleJoin)
+	s.mux.HandleFunc("POST /leave", s.handleLeave)
+	s.mux.HandleFunc("POST /stepdown", s.handleStepdown)
 	s.mux.HandleFunc("GET /store/{key}", s.handleGet)
 	s.mux.HandleFunc("HEAD /store/{key}", s.handleExists)
 	s.mux.HandleFunc("POST /store", s.handleSet)
@@ -153,6 +157,60 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	s.writeJSONResponse(w, http.StatusOK, map[string]string{
 		"message": "node joined successfully",
 		"id":      req.ID,
+	})
+}
+
+// handleLeave handles requests to safely evict a node from the consensus group
+func (s *Server) handleLeave(w http.ResponseWriter, r *http.Request) {
+	// Eviction must happen through the leader
+	if s.proxyToLeader(w, r) {
+		return
+	}
+
+	var req struct {
+		ID string `json:"id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.logger.Warn("leave failed: invalid JSON", "error", err)
+		s.writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.ID == "" {
+		s.writeJSONError(w, http.StatusBadRequest, "id is required")
+		return
+	}
+
+	if err := s.node.Leave(req.ID); err != nil {
+		s.logger.Error("leave configuration change failed", "node_id", req.ID, "error", err)
+		s.writeJSONError(w, http.StatusInternalServerError, "failed to remove node from cluster")
+		return
+	}
+
+	s.logger.Info("node successfully removed from raft consensus", "node_id", req.ID)
+	s.writeJSONResponse(w, http.StatusOK, map[string]string{
+		"message": "node left configuration successfully",
+		"id":      req.ID,
+	})
+}
+
+// handleStepdown forces the leader to step down and initiate a new election
+func (s *Server) handleStepdown(w http.ResponseWriter, r *http.Request) {
+	if !s.node.IsLeader() {
+		s.writeJSONError(w, http.StatusBadRequest, "node is not the leader")
+		return
+	}
+
+	s.logger.Info("received stepdown request, relinquishing leadership")
+	if err := s.node.StepDown(); err != nil {
+		s.logger.Error("stepdown execution failed", "error", err)
+		s.writeJSONError(w, http.StatusInternalServerError, "failed to step down leadership")
+		return
+	}
+
+	s.writeJSONResponse(w, http.StatusOK, map[string]string{
+		"message": "leadership transfer initiated successfully",
 	})
 }
 
@@ -269,9 +327,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	isLeader := s.node.IsLeader()
 
 	s.writeJSONResponse(w, http.StatusOK, map[string]any{
-		"status":    "healthy",
-		"is_leader": isLeader,
-		"time":      time.Now().Format(time.RFC3339),
+		"status":      "healthy",
+		"is_leader":   isLeader,
+		"leader_addr": s.node.GetLeaderAPIAddr(),
+		"time":        time.Now().Format(time.RFC3339),
 	})
 }
 

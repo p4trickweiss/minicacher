@@ -200,6 +200,40 @@ func TestCommandDecodeInvalid(t *testing.T) {
 	}
 }
 
+func TestOpen_MissingNodeID(t *testing.T) {
+	n := New()
+	err := n.Open(Config{BindAddr: "localhost:12000", HTTPAddr: "localhost:11000"})
+	if err == nil {
+		t.Error("Expected error for missing NodeId")
+	}
+}
+
+func TestOpen_MissingBindAddr(t *testing.T) {
+	n := New()
+	err := n.Open(Config{NodeId: "node1", HTTPAddr: "localhost:11000"})
+	if err == nil {
+		t.Error("Expected error for missing BindAddr")
+	}
+}
+
+func TestExists(t *testing.T) {
+	n := New()
+
+	if n.Exists("nonexistent") {
+		t.Error("Exists should return false for a key that was never set")
+	}
+
+	n.applySet("key1", "value1")
+	if !n.Exists("key1") {
+		t.Error("Exists should return true after applySet")
+	}
+
+	n.applyDelete("key1")
+	if n.Exists("key1") {
+		t.Error("Exists should return false after applyDelete")
+	}
+}
+
 func TestClose_WithoutOpen(t *testing.T) {
 	n := New()
 

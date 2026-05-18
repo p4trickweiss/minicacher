@@ -9,6 +9,8 @@ import {
   isNodeHealthy,
   countHealthyNodes,
   findLeader,
+  findFollowers,
+  waitForLeader,
   type HealthResponse,
 } from "./helpers";
 
@@ -60,6 +62,68 @@ describe("Cluster Health", () => {
     const followerCount = healthStatuses.filter((h) => !h.is_leader).length;
 
     expect(followerCount).toBe(2);
+  });
+});
+
+describe("Leader Stepdown", () => {
+  test("should elect a new leader after stepdown", async () => {
+    await waitForAllNodesHealthy();
+
+    const leader = await waitForLeader();
+
+    const res = await fetch(`${leader.url}/stepdown`, { method: "POST" });
+    expect(res.status).toBe(200);
+
+    // Wait for a new leader to be elected
+    await sleep(2000);
+    const newLeader = await waitForLeader(10000);
+
+    expect(newLeader).not.toBeNull();
+    expect(newLeader.id).not.toBe(leader.id);
+  });
+
+  test("should return 400 when stepdown is sent to a follower", async () => {
+    await waitForAllNodesHealthy();
+
+    const followers = await findFollowers();
+    expect(followers.length).toBeGreaterThan(0);
+
+    const res = await fetch(`${followers[0].url}/stepdown`, { method: "POST" });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("Node Leave", () => {
+  test("should proxy leave request from follower to leader", async () => {
+    await waitForAllNodesHealthy();
+
+    const followers = await findFollowers();
+    expect(followers.length).toBeGreaterThan(0);
+
+    // A non-existent node ID won't change cluster topology but exercises the proxy path
+    const res = await fetch(`${followers[0].url}/leave`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: "phantom-node" }),
+    });
+
+    // Leader receives the proxied request and attempts RemoveServer — may succeed or 500,
+    // but must NOT be a proxy error (503) or client error (400)
+    expect(res.status).not.toBe(503);
+    expect(res.status).not.toBe(400);
+  });
+
+  test("should return 400 when leave body is missing id", async () => {
+    await waitForAllNodesHealthy();
+
+    const leader = await waitForLeader();
+
+    const res = await fetch(`${leader.url}/leave`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
   });
 });
 

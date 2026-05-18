@@ -11,10 +11,12 @@ import (
 
 // mockNode implements the Node interface for testing
 type mockNode struct {
-	data      map[string]string
-	isLeader  bool
-	leaderAPI string
-	joinError error
+	data          map[string]string
+	isLeader      bool
+	leaderAPI     string
+	joinError     error
+	leaveError    error
+	stepdownError error
 }
 
 func newMockNode() *mockNode {
@@ -55,6 +57,14 @@ func (m *mockNode) Delete(key string) error {
 
 func (m *mockNode) Join(nodeID, addr string) error {
 	return m.joinError
+}
+
+func (m *mockNode) Leave(nodeID string) error {
+	return m.leaveError
+}
+
+func (m *mockNode) StepDown() error {
+	return m.stepdownError
 }
 
 func (m *mockNode) IsLeader() bool {
@@ -440,6 +450,165 @@ func TestWriteJSONResponse(t *testing.T) {
 
 	if resp["message"] != "test" {
 		t.Errorf("Expected message 'test', got '%s'", resp["message"])
+	}
+}
+
+func TestHandleLeave_Success(t *testing.T) {
+	node := newMockNode()
+	server := NewServer("localhost:8080", node, "test-node")
+
+	body := map[string]string{"id": "node2"}
+	bodyJSON, _ := json.Marshal(body)
+
+	req := httptest.NewRequest("POST", "/leave", bytes.NewReader(bodyJSON))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.handleLeave(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	if resp["id"] != "node2" {
+		t.Errorf("Expected id 'node2', got '%s'", resp["id"])
+	}
+}
+
+func TestHandleLeave_MissingID(t *testing.T) {
+	node := newMockNode()
+	server := NewServer("localhost:8080", node, "test-node")
+
+	tests := []struct {
+		name string
+		body map[string]string
+	}{
+		{"missing id field", map[string]string{}},
+		{"empty id", map[string]string{"id": ""}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bodyJSON, _ := json.Marshal(tt.body)
+			req := httptest.NewRequest("POST", "/leave", bytes.NewReader(bodyJSON))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			server.handleLeave(w, req)
+
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("Expected status 400, got %d", w.Code)
+			}
+		})
+	}
+}
+
+func TestHandleLeave_InvalidJSON(t *testing.T) {
+	node := newMockNode()
+	server := NewServer("localhost:8080", node, "test-node")
+
+	req := httptest.NewRequest("POST", "/leave", bytes.NewReader([]byte("invalid json")))
+	w := httptest.NewRecorder()
+
+	server.handleLeave(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleLeave_NodeError(t *testing.T) {
+	node := newMockNode()
+	node.leaveError = errors.New("raft error")
+	server := NewServer("localhost:8080", node, "test-node")
+
+	body := map[string]string{"id": "node2"}
+	bodyJSON, _ := json.Marshal(body)
+
+	req := httptest.NewRequest("POST", "/leave", bytes.NewReader(bodyJSON))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.handleLeave(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+}
+
+func TestHandleLeave_NotLeader_NoProxy(t *testing.T) {
+	node := newMockNode()
+	node.isLeader = false
+	node.leaderAPI = ""
+	server := NewServer("localhost:8080", node, "test-node")
+
+	body := map[string]string{"id": "node2"}
+	bodyJSON, _ := json.Marshal(body)
+
+	req := httptest.NewRequest("POST", "/leave", bytes.NewReader(bodyJSON))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.handleLeave(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("Expected status 503, got %d", w.Code)
+	}
+}
+
+func TestHandleStepdown_Success(t *testing.T) {
+	node := newMockNode()
+	server := NewServer("localhost:8080", node, "test-node")
+
+	req := httptest.NewRequest("POST", "/stepdown", nil)
+	w := httptest.NewRecorder()
+
+	server.handleStepdown(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	if resp["message"] == "" {
+		t.Error("Expected non-empty message in response")
+	}
+}
+
+func TestHandleStepdown_NotLeader(t *testing.T) {
+	node := newMockNode()
+	node.isLeader = false
+	server := NewServer("localhost:8080", node, "test-node")
+
+	req := httptest.NewRequest("POST", "/stepdown", nil)
+	w := httptest.NewRecorder()
+
+	server.handleStepdown(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleStepdown_NodeError(t *testing.T) {
+	node := newMockNode()
+	node.stepdownError = errors.New("transfer failed")
+	server := NewServer("localhost:8080", node, "test-node")
+
+	req := httptest.NewRequest("POST", "/stepdown", nil)
+	w := httptest.NewRecorder()
+
+	server.handleStepdown(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
 	}
 }
 

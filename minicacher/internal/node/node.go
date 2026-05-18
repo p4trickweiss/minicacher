@@ -41,10 +41,10 @@ func (c *command) Decode(b []byte) error {
 
 // Config holds the configuration for a Node
 type Config struct {
-	NodeId   string
-	BindAddr string
-	HTTPAddr string
-	DataDir  string
+	NodeId    string
+	BindAddr  string
+	HTTPAddr  string
+	DataDir   string
 	Bootstrap bool
 }
 
@@ -230,6 +230,60 @@ func (n *Node) handleExistingServer(nodeId, addr string, servers []raft.Server) 
 			}
 		}
 	}
+	return nil
+}
+
+// Leave removes a node from the Raft cluster configuration.
+// This must be executed on the current cluster leader.
+func (n *Node) Leave(nodeId string) error {
+	state := n.raft.State()
+	if state != raft.Leader {
+		n.logger.Debug("leave rejected: not leader",
+			"target_node_id", nodeId,
+			"current_state", state.String())
+		return fmt.Errorf("not leader")
+	}
+
+	n.logger.Info("applying configuration change to remove server",
+		"target_node_id", nodeId)
+
+	// RemoveServer tells the cluster configuration to safely evict this server ID.
+	// The 0 arguments specify no index limitations and use default internal timeouts.
+	future := n.raft.RemoveServer(raft.ServerID(nodeId), 0, 0)
+	if err := future.Error(); err != nil {
+		n.logger.Error("failed to remove server from configuration",
+			"target_node_id", nodeId,
+			"error", err)
+		return fmt.Errorf("failed to remove server: %w", err)
+	}
+
+	n.logger.Info("node successfully removed from cluster configuration",
+		"target_node_id", nodeId)
+	return nil
+}
+
+// StepDown instructs the current leader to give up its leadership role and
+// gracefully force an election among the remaining healthy cluster peers.
+func (n *Node) StepDown() error {
+	state := n.raft.State()
+	if state != raft.Leader {
+		n.logger.Debug("stepdown rejected: not leader",
+			"current_state", state.String())
+		return fmt.Errorf("not leader")
+	}
+
+	n.logger.Info("initiating proactive leadership transfer")
+
+	// LeadershipTransfer forces the current leader to stop taking logs and
+	// commands an active follower to instantly start an election.
+	future := n.raft.LeadershipTransfer()
+	if err := future.Error(); err != nil {
+		n.logger.Error("failed executing leadership transfer",
+			"error", err)
+		return fmt.Errorf("leadership transfer failed: %w", err)
+	}
+
+	n.logger.Info("leadership transfer initiated successfully")
 	return nil
 }
 
